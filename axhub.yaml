@@ -1,9 +1,8 @@
 version: axhub/v1
 name: aoura-os
-root: app
 metadata:
   name: Aoura 운영 시스템
   description: AX 인재전쟁 배포 테스트 앱
 build:
   deploy_method: static
-  static_output_dir: .
+  static_output_dir: app
