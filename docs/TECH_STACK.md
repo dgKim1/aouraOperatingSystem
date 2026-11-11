@@ -95,6 +95,6 @@
 
 - [x] **배포 방식 static → docker 전환** — 2026-11-12 완료 (사용자 승인). 첫 docker 배포 성공 전까지 옛 정적 페이지 유지.
 - [ ] `axhub.yaml` 을 `deploy_method: docker` · `root: app` · `database: engine: postgres` 로 변경 (Next.js 골격과 함께, 그 전엔 push 금지).
-- [ ] `ANTHROPIC_API_KEY`: 로컬은 `app/.env.local`(git 제외 — `.git/info/exclude`), 배포는 `axhub env set --app aoura-os --tenant lounge --from-dotenv app/.env.local --only ANTHROPIC_API_KEY --execute`.
+- [x] `ANTHROPIC_API_KEY`: 로컬은 `app/.env.local`(git 제외 — `.git/info/exclude`), axhub 에는 2026-11-12 **secret · stage=runtime** 으로 등록 완료 (아래 DEPLOY.md 5절 방법).
 - [ ] 원본 데이터를 앱에서 읽는 방식: 빌드/시드 시 `01_참가자_배포용/04_원본데이터` → DB 적재 (배포 이미지에 원본 CSV 포함 여부 확인 — 웹 공개 경로로는 노출하지 않음).
 - [ ] 온톨로지 · 상태 머신 · 화면 명세 (기획 에이전트 첫 작업).

@@ -93,7 +93,15 @@ build:
 - **`axhub up`(저장소 없이 업로드) 금지** — 항상 axhub 저장소 push 로 배포해요.
 - `lounge` 가 아닌 테넌트에 앱을 만들거나 배포하지 않아요.
 - `.claude/` `.codex/` `.agents/` 폴더와 `.gitignore` 를 수정하지 않아요.
-- 비밀값을 채팅으로 받지 않아요. 필요한 환경변수는 `.env` 에 넣고 `axhub env set --app aoura-os --from-dotenv .env --only <이름> --execute` 로 등록해요.
+- 비밀값을 채팅으로 받지 않아요. 필요한 환경변수는 `app/.env.local` 에 넣고(git 제외됨) 아래처럼 등록해요. 값은 화면에 출력하지 않아요.
+  ```bash
+  # 처음 등록 (from-dotenv 는 stage 가 build 로 잡힘)
+  axhub env set --app aoura-os --tenant lounge --from-dotenv app/.env.local --only <이름> --execute
+  # 실행 시점에만 쓰는 값은 runtime 으로 변경 — 값은 파일에서 파이프로만 전달
+  sed -n 's/^<이름>=//p' app/.env.local | tr -d '\r\n' | axhub env update <이름> --app aoura-os --tenant lounge --stage runtime --from-stdin
+  axhub env list --app aoura-os --tenant lounge   # 값은 *** 로 표시
+  ```
+- 등록된 환경변수: `ANTHROPIC_API_KEY` (secret · runtime)
 
 ## 6. 문제 해결 기록
 
