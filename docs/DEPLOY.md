@@ -11,10 +11,12 @@
 | 앱 slug | `aoura-os` |
 | 앱 ID | `67aa2c25-3329-4ee9-8cb7-3b5114266cf2` |
 | 테넌트(조직) | `lounge` (ID `c7a0a6fe-86c6-45f4-adc2-3ab7bd19ea36`) — **반드시 lounge** |
-| 배포 방식 | `static` (정적 사이트) |
+| 배포 방식 | **`docker`** (2026-11-12 static 에서 전환 · 되돌릴 수 없음). 첫 docker 배포 성공 전까지는 옛 정적 페이지가 계속 열려 있음 |
 | 코드 저장 위치 | axhub self-hosted 저장소 (`git_backend: selfhosted`) |
 | 앱 주소 | https://aoura-os-oiw3.axhub.page |
 | CLI | axhub CLI (`~/.axhub/bin/axhub`), 로그인 계정 lounge 멤버 |
+
+> ⚠ **docker 전환 후 아직 `axhub.yaml` 은 static 설정이다.** Next.js 앱 골격과 함께 `build.deploy_method: docker`·`root: app`·`database: engine: postgres` 로 바꾸기 전에는 `git push origin` 하지 않는다(배포 실패).
 
 ## 2. 폴더 구조와 배포 범위
 
