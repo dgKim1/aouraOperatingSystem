@@ -3,6 +3,7 @@
 > 선택일: 2026-11-10 · 기업: **Masil Commerce** · 부서: 마케팅 (+ 재무 · 계약 담당 · CEO/이사회)
 > 출처: `01_참가자_배포용/세계관_BPMN/W02.html` 및 아래 원본 파일. 경로는 `01_참가자_배포용/04_원본데이터/` 기준.
 > 표기: **[원본]** 제공 데이터로 확인한 사실 · **[주장]** 부서 작성 의견(사실 아님) · **[집계]** 원본을 직접 계산한 값 · **[가정]** 주최 측/우리가 둔 가정
+> 설계 문서: [ONTOLOGY.md](ONTOLOGY.md)(대상 · 상태 · 규칙 · 가정 · 공백) · [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md)(시연 3상황 · 수용 기준 · 골든 값) · [SCREEN_SPEC.md](SCREEN_SPEC.md)(화면 · API 제안)
 
 ## 1. 핵심 질문
 
@@ -84,9 +85,21 @@
 - 성과 쪽 표본(`mkt_ad_spend_ms`, `mkt_orders_ms` 등)으로 낸 실질 공헌이익은 계속 **비중 · 순위 · 방향**으로만 비교한다.
 - covenant 하회 예상 구간에 집행일(`settlement_date`)이 걸리면 금액과 무관하게 **그룹 CEO 승인**이 우선한다([원본] 정책 · 3-5).
 
-### 3-4. 실질 공헌이익 — 공식 정의와 계산 재료 [원본]
+### 3-4. 실질 공헌이익 — 공식값 정의와 계산 재료
 
-**공식 정의** — `00_common/calculation_definitions.md` 1.4 「캠페인 실질 ROAS」 (채점 대상, **정의 그대로** 적용):
+**공식값 (2026-11-13 결정)** — `A05.html` 5절(v1.5) 단일 차감:
+
+```
+Net Revenue         = GMV − 반품환불액            (GMV 는 쿠폰 반영 후 · VAT 제외)
+Contribution Profit = Net Revenue − COGS − Marketing Spend − Channel Fee − Fulfillment Cost − Return Logistics Cost
+                      (각 비용 한 번씩 차감, 쿠폰 · 환불은 다시 빼지 않음)
+Nominal ROAS = GMV / Marketing Spend ;  Real ROAS = Contribution Profit / Marketing Spend
+```
+
+- 근거: A05 1절(이번 지침이 원본 폴더의 이전 안내와 충돌하면 이번 지침 적용) · A01 4절("데이터의 적용 범위, 알려진 한계, 구판 문서와의 충돌은 A05 데이터 이용 기준을 따릅니다") · A01 8절("데이터 해석과 원본 별첨의 충돌은 A05 데이터 이용 기준을 따른다").
+- 판단 · 권고 · 순위는 모두 이 공식값으로 한다. 규칙 ID R-CP-01 · R-CP-05 — [ONTOLOGY.md 4-3](ONTOLOGY.md).
+
+**참고값** — `00_common/calculation_definitions.md` 1.4 「캠페인 실질 ROAS」 를 문자 그대로 적용한 값 (비교용, 판단에 쓰지 않음 · R-CP-02):
 
 ```
 Nominal ROAS = Attributed GMV / Marketing Spend
@@ -99,8 +112,9 @@ Contribution Profit = Net Revenue − COGS − Coupon Discount − Influencer Fe
 - Net Revenue = GMV − 반품환불액 (GMV 는 쿠폰 반영 후 · VAT 제외)
 - **Marketing Spend = `mkt_ad_spend_ms.ad_cost_krw` 전액** (media = 인플루언서 + 퍼포먼스 + 오프라인)
 - COGS · Channel Fee · 물류비 = `mkt_cost_master_ms` 고정값 · 캠페인 귀속 = **last-click 7일**
-- ⚠ **해석 주의**: 정의상 Net Revenue 에서 이미 반품환불을 뺐는데 산식에서 Return Refund 를 다시 빼고, "쿠폰 반영 후" GMV 에서 Coupon Discount 를 다시 뺀다. 공식값은 **정의 그대로** 계산하되, 이중 차감 여부를 설계 설명에 **명시**한다(필요하면 비교용 대안 값을 [가정] 으로 함께 표시).
-- 참고: 회의록(재무팀)의 산식 "GMV − 쿠폰 − 반품환불 − 광고비 − 인플루언서 비용 − 채널 수수료 − 배송/반품물류비" 는 **[주장]** 이며 COGS 가 빠져 있다 → 공식 정의를 우선한다.
+- ⚠ **이중 차감**: 1.4 를 문자 그대로 쓰면 Net Revenue 에서 이미 뺀 반품환불을 다시 빼고, "쿠폰 반영 후" GMV 에서 Coupon Discount 를 다시 뺀다. 그래서 이 값은 **참고값**으로만 남기고 설계 설명에 이중 차감임을 명시한다.
+- **원본 지침 충돌과 결정**: 2026-11-12 에 1.4(이중 차감)와 A05 5절("동일 주문에 대해 쿠폰과 환불을 다시 차감하지 않습니다")의 충돌을 확인했고, 2026-11-13 사용자 결정으로 **A05 단일 차감을 공식값**으로 정했다. 1.4 참고값과 부호가 다른 경우(INF-003 · INF-007, 기안 PLAN-006 · 008 · 010 · 011 · 012)는 화면에 참고 플래그로만 표시한다. 수치는 [DEMO_SCENARIOS.md 부록 A](DEMO_SCENARIOS.md).
+- 참고: 회의록(재무팀)의 산식 "GMV − 쿠폰 − 반품환불 − 광고비 − 인플루언서 비용 − 채널 수수료 − 배송/반품물류비" 는 **[주장]** 이며 COGS 가 빠져 있다 → 공식값(A05) 정의를 우선한다.
 - 관련 지표: 반품률 = Σ반품환불액 / ΣGMV (**금액 기준**, 벤치마크 8%) · 재구매율 = 90일 내 재구매 고객 / 최초구매 고객 (벤치마크 22%) — `calculation_definitions` 1.6 · 1.7
 
 | 재료 | 파일 | 연결 키 |
@@ -122,6 +136,7 @@ Contribution Profit = Net Revenue − COGS − Coupon Discount − Influencer Fe
 - 재전망으로 **하회 예상 구간**에 현금이 나가는 신규 약정(캠페인 계약 포함)은 금액 불문 **그룹 CEO 승인**.
 - 기안은 자금 전망 유출 산식에 **포함되지 않으므로** "마케팅 축소 = 자금 해법"으로 제시하지 않는다. 시점 대조의 목적은 **승인 주체와 순서**다.
 - `fin_cash_forecast_ms.csv` 는 재무팀 **공식 전망 = 주장**. 스케줄(AR·AP(`po_id='NONE'`)·발주)로 재시뮬레이션해 대조해야 한다.
+- [집계] 재시뮬레이션 결과(기준일 이전 만기 제외 가정): **2026-07-21 ~ 08-21 하회 예상**(최저 1,921,839,555원, 7/27) — 7/21 기발주 대금 3,749,760,000원 일괄 지급 때문. 공식 전망(주장)은 하회 없음(주간 최저 5,468,884,369원). 상세 · 민감도는 [DEMO_SCENARIOS.md 부록 A-4](DEMO_SCENARIOS.md).
 
 ### 3-6. 캠페인 → 재고 · 공급 연결 — [원본] `02_masil/inventory/`, `02_masil/master/m_sku_ms.csv`
 
@@ -141,7 +156,8 @@ Suggested Order  = max(Target Qty − available_qty − in_transit_qty, 0) → M
 ```
 - 커버 계산의 현재고는 `on_hand_qty` 만 (`in_transit_qty` 미합산).
 - 재고 · 발주 · 자금 계열은 **풀스케일**, 커머스 주문 계열은 **표본** → 캠페인 수요 상승분을 재고 수량에 그대로 더하지 않고 **비율 · 방향**으로만 연결하거나, 연결 방법을 **[가정]** 으로 명시한다.
-- 예: SKU-1001 은 Corevia 공급 · MOQ 24,000 · 리드타임 **12주** → 7/17 결정으로 늘어날 판매는 **현재고 + 기발주 + 12주 뒤 입고**로만 감당 가능. 판매계획 변경은 Corevia(생산·조달)에 전달할 정보가 된다.
+- 예: SKU-1001 은 Corevia 공급 · MOQ 24,000 · 리드타임 **12주** → 늘어날 판매는 **현재고 + 기발주 + 12주 뒤 입고**로만 감당 가능. 판매계획 변경은 Corevia(생산·조달)에 전달할 정보가 된다.
+- [집계] 정정: 7/17 마감 기안 5건(PLAN-001~005)의 주력 SKU 는 기초 · 색조 · 선케어(커버 4.2주 이상)이고, **더마 SKU 를 쓰는 기안은 PLAN-011(CMP-0018, 8/14 마감) 하나**다. 더마 4종 중 3종은 커버 2.2~2.9주로 안전재고 min 4주 미만 → [DEMO_SCENARIOS.md ④](DEMO_SCENARIOS.md).
 - 발주 대금(`sc_purchase_orders_ms.payment_due_date`)은 Masil 현금 시뮬레이션의 유출 항목 → covenant 판정과 연결된다.
 
 ### 3-7. 추가 시나리오 — 캠페인의 성공을 회사의 실행계획으로 바꿀 수 있을까? (추가 전달 사항)
@@ -200,7 +216,7 @@ Suggested Order  = max(Target Qty − available_qty − in_transit_qty, 0) → M
 | 다른 부서 영향 | 재무: covenant 하회 구간과 집행일이 겹치면 승인 주체가 **그룹 CEO**로 바뀜 / 갱신 시 1년 예산 선점 → 다른 인플루언서 기안 재배분 / **SCM · Corevia: 확대 승인 캠페인의 주력 SKU 재고 커버가 부족하면 캠페인 일정 조정 또는 재고 보충 요청 생성(리드타임 12주 · MOQ 제약)** |
 | 원본과 가정 구분 | 위 [원본]/[주장]/[집계]/[가정] 태그를 화면·데이터에 그대로 사용 |
 
-> 7절은 설계 출발점이다. 구체 설계를 정하면 별도 문서로 옮긴다.
+> 7절은 설계 출발점이다. 구체 설계는 [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md) 로 옮겼다(나만의 확장 = E1 통보 수령확인 상태 · E2 재고 커버 게이트, 다른 부서 영향 = D1 재무 covenant · D2 SCM/Corevia).
 
 ## 8. 여섯 관점을 W02 에서 보여주는 방법 (초안)
 
@@ -213,4 +229,4 @@ Suggested Order  = max(Target Qty − available_qty − in_transit_qty, 0) → M
 | **AI · 사람 · 도구의 역할** | AI: 접수된 통보 · 기안을 읽고 기한 · 권한 · 성과 · 재고를 조회해 **판단안과 근거** 작성. 사람: 권한자가 승인/반려/예외 판단(모의 회신). 도구: 승인요청 생성, 상태 변경, 통보 기록, 발주 제안 생성 |
 | **판단 이후의 처리** | 결정 · 회신에 따라 승인요청 · 통보문 · 재검토 작업 · 재고 보충 요청이 **생성 · 갱신**되고 처리 이력이 쌓이며, 바뀐 상태(예: 전속계약 갱신 확정 → INF-001 예산 선점 / 반려 → 기한 전 재검토 작업)가 **다음 기안 판단에 반영** |
 
-기술 · 구조 선택과 그 이유는 설계 단계에서 이 표를 기준으로 정한다.
+기술 · 구조 선택과 그 이유는 설계 단계에서 이 표를 기준으로 정한다. 온톨로지 상세는 [ONTOLOGY.md](ONTOLOGY.md), 화면은 [SCREEN_SPEC.md](SCREEN_SPEC.md).

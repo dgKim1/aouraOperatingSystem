@@ -26,7 +26,7 @@ W02 「인플루언서 계약과 캠페인 집행」(Masil) 업무의 AI 운영 
 
 ## 데이터 기준 (A05 · data_dictionary · calculation_definitions)
 - CSV 구분자 `|`, 금액 원 단위 · 부가세 제외.
-- 공헌이익 공식은 `00_common/calculation_definitions.md` 1.4 를 **정의 그대로**(이중 차감 여부는 설명에 명시).
+- 공헌이익 공식값은 **A05(v1.5) 5절 기준**: Net Revenue(GMV − 반품환불)에서 원가 · 마케팅비 · 채널수수료 · 출고/반품 물류비를 각 한 번씩 차감하고, 쿠폰 · 환불은 다시 차감하지 않는다. `calculation_definitions.md` 1.4 를 그대로 적용한 값(쿠폰 · 환불 이중 차감)은 비교용 참고값으로만 표시한다. 근거: A05 1절 · A01 4절 · 8절(구판 문서 · 원본 별첨과 충돌 시 A05 우선).
 - 승인 권한은 `00_common/approval_authority_policy.md`. 기안 금액은 실제 기안 요청액으로 해석(`docs/W02_TASK.md` 3-3).
 
 ## 기술
