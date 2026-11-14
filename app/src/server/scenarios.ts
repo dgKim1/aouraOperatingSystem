@@ -21,7 +21,7 @@ export const PRESETS: PresetInfo[] = [
   { id: 'S2', scenario: '②', title: '② 회수 지연 → 재전망 (7/14 10:00)', description: '하회 구간 7/21~8/28, PLAN-004 재승인 요청 대기', next: '승인함에서 그룹 CEO/이사회 역할로 PLAN-004 새 요청에 조건부 승인' },
   { id: 'S3_1', scenario: '③', title: '③ 계약 반려 (7/10 14:00)', description: '계약 REVIEW_BEFORE_DEADLINE · 정보 요청 작업', next: '사건 입력에서 에이전시 정보 부족 회신' },
   { id: 'S3_B', scenario: '③', title: '③-B 미결로 기한 경과 (7/18 00:00)', description: '계약 AUTO_RENEWED (권한 미경유 체결)', next: '전속계약 상세에서 위약금 확인' },
-  { id: 'S4', scenario: '④', title: '④ 더마 재고 게이트 (7/20 09:00)', description: 'PLAN-011 재고 부족 · 보충 제안 초안', next: '재고 커버에서 보충 제안 확인, SCM 역할로 보충 검토 회신' },
+  { id: 'S4', scenario: '④', title: '④ 더마 재고 게이트 (7/20 09:00)', description: 'PLAN-011 재고 부족 · 판단안 v1(조건부) · 보충 제안 초안', next: 'SCM 역할로 보충 검토 회신 → PLAN-011 판단안 다시 만들기(v2)' },
 ];
 
 export const isPresetId = (x: string): x is PresetId => PRESETS.some((p) => p.id === x);
@@ -96,7 +96,9 @@ function s3_b(ds: MasilDataset) {
   return step(s, ds, (x) => wf.advanceClock(x, '2026-07-18T00:00:00+09:00'));
 }
 function s4(ds: MasilDataset) {
-  const s = step(s1_6(ds), ds, (x) => wf.advanceClock(x, at('2026-07-20', '09:00')));
+  let s = step(s1_6(ds), ds, (x) => wf.advanceClock(x, at('2026-07-20', '09:00')));
+  // BE-24: 판단(게이트 결과 · 조건부 권고) → 보충 초안 순서 (DEMO S4-2). 판단안은 어떤 상태도 바꾸지 않는다
+  s = settle(recordMockAssessment(s, ds, { subjectType: 'EXPANSION_LINES', subjectIds: ['PLAN-011'] }).state, ds);
   return step(s, ds, (x) => wf.draftReplenishment(x, ds, { triggerLineId: 'PLAN-011' }));
 }
 
@@ -154,6 +156,8 @@ export function checkScenario(id: string, s: wf.WorldState): ScenarioCheckView {
     list.push(crit('AC-4-02', 'PLAN-011 재고 게이트 플래그', ['INVENTORY_BELOW_MIN', 'STOCKOUT_BEFORE_SETTLEMENT'].every((f) => line('PLAN-011')?.flags.includes(f as never)), true));
     list.push(crit('AC-4-03', 'PLAN-011 권고 ≠ APPROVE (재고 게이트 우선)', line('PLAN-011') ? wf.recommendLine(line('PLAN-011')!).decision !== 'APPROVE' : null, true));
     list.push(crit('AC-4-04', '보충 제안 1001 · 1002 · 1004 = 24000 · 24000 · 20000', s.replenishments.map((r) => [r.skuId, r.finalQty]), [['SKU-1001', 24000], ['SKU-1002', 24000], ['SKU-1004', 20000]]));
+    const asm = s.assessments.filter((a) => a.subjectType === 'EXPANSION_LINES' && a.subjectIds.length === 1 && a.subjectIds[0] === 'PLAN-011')[0];
+    list.push(crit('AC-4-06a', 'PLAN-011 판단안 v1 · 권고 조건부', [asm?.version ?? null, asm?.proposedDecisions?.find((p) => p.itemId === 'PLAN-011')?.decision ?? null], [1, 'CONDITIONAL']));
     list.push(crit('AC-4-05', '보충요청 권한자 (지급 8/14 → 그룹 CEO/이사회)', [...new Set(s.replenishments.map((r) => r.requiredRole))], ['GROUP_CEO_BOARD']));
   }
   return { preset: presetInfo(id), criteria: list, passed: list.filter((c) => c.passed).length, total: list.length };

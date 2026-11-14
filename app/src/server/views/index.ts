@@ -19,7 +19,6 @@ import type {
   CostStep,
   CovenantWindowView,
   DeadlineGroup,
-  GapStatus,
   InfluencerPerfRow,
   InfluencersView,
   InventoryView,
@@ -43,6 +42,7 @@ import { kstDate } from '@/domain/dates';
 import { daysLeft, deadlineLevel, decisionNeededBy, internalDueAt } from '@/domain/deadline';
 import { DomainError } from '@/domain/errors';
 import { DOC_FILES, MASIL_FILES as F, FILE_SCALE, type MasilFileKey } from '@/domain/files';
+import { gapState, gapStatus } from '@/domain/gaps';
 import { expectedArrivalDate, expectedPaymentDate, inventoryGate, replenishmentSuggestionsForLine, skuCoverTable } from '@/domain/inventory';
 import { APPROVAL_STATUS_KO, CONTRACT_STATUS_KO, decisionText, LINE_STATUS_KO, replenishmentStatusText, TASK_STATUS_KO, TASK_TYPE_KO } from '@/domain/labels';
 import { MOCK_REPLY_DATASET } from '@/domain/mockReplies';
@@ -772,6 +772,8 @@ export function approvalView(s: S, ds: MasilDataset, a: ApprovalRequest, alerts?
     return { itemId: p.itemId, title: r ? `${r.id} · ${r.skuId} ${fmt(r.finalQty)}EA` : p.itemId, href: '/analysis/inventory', proposedDecision: p.decision, proposedText: decisionText(p.decision), status: r?.status ?? '' };
   });
   const ids = new Set([a.id, ...a.subjectIds]);
+  const asm = a.assessmentId ? s.assessments.find((x) => x.id === a.assessmentId) : undefined;
+  const asmDecision = a.subjectType === 'CONTRACT' ? asm?.alternatives.find((x) => x.id === asm.recommendation.alternativeId)?.decision : undefined;
   return {
     request: a,
     statusText: APPROVAL_STATUS_KO[a.status],
@@ -781,6 +783,8 @@ export function approvalView(s: S, ds: MasilDataset, a: ApprovalRequest, alerts?
     daysLeft: daysLeft(s.simNow, a.hardDeadline),
     level: deadlineLevel(s.simNow, a.hardDeadline),
     assessmentId: a.assessmentId,
+    proposedSource: a.proposedSource ?? 'ASSESSMENT',
+    assessmentDecisionText: asmDecision ? decisionText(asmDecision) : null,
     supersededBy: s.approvals.find((x) => x.supersedesId === a.id)?.id ?? null,
     alerts: (alerts ?? buildAlerts(s, ds)).filter((al) => al.subjectIds.some((x) => ids.has(x))),
     replies: s.replies.filter((r) => r.requestId === a.id).map((r) => ({ id: r.id, respondentRole: r.respondentRole, outcome: r.outcome, reason: r.reason, simAt: r.simAt, label: r.label })),
@@ -1085,16 +1089,8 @@ const USED_IN: Partial<Record<MasilFileKey, string>> = {
   cashForecast: '대조용 (주장)',
 };
 
-/**
- * BE-12 공백 상태 — 모의 회신으로 보완된 공백은 FILLED_BY_MOCK. 원본 공백 자체는 남으므로 '해소'(open:false)로 돌려주지 않는다.
- * G-02: 에이전시 정보 제공(A-33) · G-03: 수령확인 · G-08: SCM/Corevia 회신으로 공급 전망 · 입고일이 정해짐
- */
-export function gapStatus(s: S, id: string): GapStatus {
-  if (id === 'G-02' && s.contract.performanceFeeTerms !== null) return 'FILLED_BY_MOCK';
-  if (id === 'G-03' && s.receipts.length > 0) return 'FILLED_BY_MOCK';
-  if (id === 'G-08' && s.lines.some((l) => (l.supplyOutlook ?? 'UNKNOWN') !== 'UNKNOWN' || !!l.inboundExpectedDate)) return 'FILLED_BY_MOCK';
-  return 'OPEN';
-}
+/** BE-12 · BE-21 공백 상태 — 판정 함수는 domain/gaps.ts 하나 (판단안 unknowns 와 같은 값 · 같은 문구) */
+export { gapStatus };
 
 export function registryView(s: S, rowCounts: Record<MasilFileKey, number>): RegistryView {
   const scaleKo = { FULL: '풀스케일', SAMPLE: '표본', NONE: '-' } as const;
@@ -1102,8 +1098,7 @@ export function registryView(s: S, rowCounts: Record<MasilFileKey, number>): Reg
     sources: (Object.keys(F) as MasilFileKey[]).map((k) => ({ file: F[k], rows: rowCounts[k], scale: scaleKo[FILE_SCALE[k]], label: k === 'cashForecast' ? 'CLAIM' : 'ORIGINAL', usedIn: USED_IN[k] ?? '마스터' })),
     assumptions: ASSUMPTIONS,
     gaps: GAPS.map((g) => {
-      const status = gapStatus(s, g.id);
-      return { ...g, open: true, status, statusText: status === 'FILLED_BY_MOCK' ? '모의 회신으로 보완 — 원본 공백은 그대로' : '미확인' };
+      return { ...g, open: true, ...gapState(s, g.id) };
     }),
     claims: CLAIMS,
     mocks: MOCK_REPLY_DATASET,

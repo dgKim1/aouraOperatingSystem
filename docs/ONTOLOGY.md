@@ -7,6 +7,7 @@
 > **2026-11-14 갱신(2)**: 백엔드 2단계(DB · API 24개 · AI 에이전트, 미커밋 작업본) 코드 대조 반영 — 판단안 타입 · 도구 호출 기록, 외부 회신 최종 입력 · 상대별 효과, 보충요청 초안 오류, BE-09, DB 스키마 일반화(`raw_rows` · `data jsonb`), 새 가정 A-33 · A-34, BE-01~10 상태, 완료 조건 점검. 목록은 [8절](#8-2단계-백엔드-반영--완료-조건-점검--후속-작업-2026-11-14).
 > **2026-11-14 갱신(3)**: 프론트엔드 2단계(커밋 `f2ba215` 이후, devlog LOG-017) 반영 — **실시간 AI 판단안 보류(사용자 결정)**, 프론트엔드가 문서와 다르게 만든 6건 판정, **쓰기 행위별 허용 역할**([1-3 역할](#쓰기-행위별-허용-역할-2026-11-14)), 새 가정 A-35 · A-36, 완료 조건 재판정, 후속 작업 BE-17~20 · FE-12~14. 목록은 [9절](#9-2단계-프론트엔드-반영--쓰기-권한--실시간-ai-보류-2026-11-14).
 > **2026-11-14 갱신(4)**: 3단계(백엔드 LOG-022 · 025, 프론트엔드 LOG-023) 반영 — BE-17~20 · FE-12~14 완료 표시, **판단 3건**(판단안 미확인 목록의 공백 상태 · ④ 프리셋 판단안 v1 · 재검토 작업 자동 종료), **재상신 근거 판단안 규칙**(1-3 ApprovalRequest), 3-4 작업 자동 종료, A-33 · A-35 문구 보완, 후속 작업 BE-21~24 · FE-15~17. 목록은 [10절](#10-3단계-반영--판단-3건--재상신-규칙--후속-작업-2026-11-14).
+> **2026-11-14 갱신(5)**: 백엔드 4단계(LOG-030) 반영 — BE-21~24 **구현됨** 표시와 타입(`AssessmentUnknown` · `AiTurnTrace` · `proposedSource` 판정 기준 · 점검 항목 AC-4-06a), **AI 방식 사용자 결정 (b)**: 실제 Claude 실행 1회(2026-11-14 17:19 KST) + 기록 재생으로 9-1 을 다시 씀(심사 관점별 증거 표 · **실제 작동 / 모의 처리 / 설계 단계 구분표**), 배포 A안 확정(BE-14), 후속 작업 FE-18 ~ FE-20 · BE-25(알려진 결함 — 수정 중), 프론트엔드 4단계 판정 6건(11-6). 목록은 [11절](#11-4단계-반영--ai-실행-기록--배포-a안--후속-작업-2026-11-14).
 
 ## 0. 표기
 
@@ -19,7 +20,7 @@
 | `CLAIM` | 주장 | 회의록 · 부서 메모 · 기안 예상 GMV · 재무팀 공식 전망 |
 | `MOCK` | 모의 | 모의 회신 · 모의 사건 입력 · 모의 모드 AI 출력 |
 
-- **실시간 AI 가 쓴 문장**(판단안의 권고 이유 · 관점별 근거 · 대안 설명)은 위 6종 중 어느 것도 아니다 — 값이 아니라 AI 가 쓴 문장이다. 화면은 출처 배지 대신 **「AI 작성」 표지**를 달고, 문장 속 숫자의 출처는 `facts` 배지와 숫자 출처 검증(`provenance`)으로 보인다. `원본근거해석` 을 쓰지 않는 이유: 그 라벨은 "원본 문구를 근거로 정한 해석"이며 근거 문구를 함께 보여야 하는데(위 표), AI 문장에는 하나의 근거 문구가 정해지지 않아 원본에 근거한 해석처럼 보이게 된다(2026-11-14 결정, 9-2 ⑥). 모의 모드 문장은 지금처럼 `모의`. 시연은 모의 모드라(9-1) 이 표지는 실시간 경로를 다시 열 때만 보인다.
+- **실시간 AI 가 쓴 문장**(판단안의 권고 이유 · 관점별 근거 · 대안 설명)은 위 6종 중 어느 것도 아니다 — 값이 아니라 AI 가 쓴 문장이다. 화면은 출처 배지 대신 **「AI 작성」 표지**를 달고, 문장 속 숫자의 출처는 `facts` 배지와 숫자 출처 검증(`provenance`)으로 보인다. `원본근거해석` 을 쓰지 않는 이유: 그 라벨은 "원본 문구를 근거로 정한 해석"이며 근거 문구를 함께 보여야 하는데(위 표), AI 문장에는 하나의 근거 문구가 정해지지 않아 원본에 근거한 해석처럼 보이게 된다(2026-11-14 결정, 9-2 ⑥). 모의 모드 문장은 지금처럼 `모의`. 운영 화면(S-05)은 시연 런타임이 모의 모드라(9-1) 이 표지가 나오지 않는다. **기록 재생 화면**(SCREEN_SPEC S-05R)의 문장은 실제 Claude 가 쓴 것이므로 「AI 작성」 표지에 **`기록 재생` 표지**를 함께 단다 — `실시간` 도 `모의` 도 아니다(9-1 표시 규칙).
 
 | 스케일 (enum `Scale`) | 대상 |
 |---|---|
@@ -238,7 +239,7 @@ interface Event { id: string; type: EventType; payload: unknown; label: 'ORIGINA
 - 이벤트 처리 결과에 붙는 `routingChanges` 항목 = `{lineId, from, to, ruleId, action}`. `action` 은 R-AUTH-06 처리 방식(4-1 표).
 
 #### Assessment (판단안)
-`id` · `subjectType`(`'CONTRACT' | 'EXPANSION_LINES' | 'REPLENISHMENT'`) · `subjectIds` · `triggerEventId` · `facts: AssessmentFact[]`(도구가 돌려준 값만) · `ruleResults: AssessmentRuleResult[]` · `alternatives: Alternative[]` · `recommendation: {alternativeId, rationale}` · `perspectives: {marketing, finance, contract, scm}`(관점별 근거 문장) · `claimsCited: {text, ref}[]`(주장 인용은 분리) · `unknowns: {gapId, impact, status, statusText}[]`(아래 「미확인 목록의 공백 상태」) · `aiMode: 'LIVE' | 'MOCK'` · `model` · `version`(같은 대상(`subjectType` + 정렬한 `subjectIds`) 판단안의 버전, 다시 판단하면 +1 — AC-3-02 판단안 v2 · AC-4-06 "버전이 올라간다") · `createdAt` · 아래 2단계 필드.
+`id` · `subjectType`(`'CONTRACT' | 'EXPANSION_LINES' | 'REPLENISHMENT'`) · `subjectIds` · `triggerEventId` · `facts: AssessmentFact[]`(도구가 돌려준 값만) · `ruleResults: AssessmentRuleResult[]` · `alternatives: Alternative[]` · `recommendation: {alternativeId, rationale}` · `perspectives: {marketing, finance, contract, scm}`(관점별 근거 문장) · `claimsCited: {text, ref}[]`(주장 인용은 분리) · `unknowns: AssessmentUnknown[]`(= `{gapId, impact, status, statusText}` — 아래 「미확인 목록의 공백 상태」) · `aiMode: 'LIVE' | 'MOCK'`(운영 판단안은 이 둘뿐 — 기록 재생의 `RECORDED` 는 재생 전용 타입에만 있다, 9-1) · `model` · `version`(같은 대상(`subjectType` + 정렬한 `subjectIds`) 판단안의 버전, 다시 판단하면 +1 — AC-3-02 판단안 v2 · AC-4-06 "버전이 올라간다") · `createdAt` · 아래 2단계 필드.
 
 ```ts
 interface AssessmentFact { key: string; name: string; value: Sourced<unknown> }   // key = 안정 식별자 예 'line.PLAN-004.cp', name = 화면 표시명
@@ -250,16 +251,20 @@ toolCalls?: ToolCallLog[]        // S-05 「도구 호출 목록」
 fallbackReason?: string | null   // 실시간 호출 실패 · 거절(refusal) · 숫자 출처 위반으로 모의 대체된 이유 (오류 원문 · 키는 넣지 않음)
 stopReason?: string | null       // 모델 stop_reason (모의면 null)
 warnings?: string[]
+aiTrace?: AiTurnTrace[]          // 4단계: 실시간 호출 추적 — 모델 응답마다 1행. 모의 판단안에는 없다. 키 · 헤더 · 본문은 넣지 않는다
+interface AssessmentUnknown { gapId: string; impact: string; status: 'OPEN' | 'FILLED_BY_MOCK'; statusText: string } // 4단계 (BE-21)
+interface AiTurnTrace { messageId: string; model: string; stopReason: string | null; inputTokens: number | null; outputTokens: number | null } // model = API 응답의 model 필드
 ```
 - `Alternative = { id, title, decision, effects: Sourced<unknown>[], risks: string[], requiresRole: ApproverRole }`.
-- **미확인 목록의 공백 상태** (2026-11-14 결정, 10-1 ⓐ · BE-21): `unknowns[].status` = `'OPEN'`(미확인) 또는 `'FILLED_BY_MOCK'`(모의 회신으로 보완 — 원본 공백은 그대로), `statusText` 는 그 표시 문구. 판정은 S-12 공백 상태(BE-12)와 **같은 함수 · 같은 값**을 쓴다: G-02 = 에이전시 모의 「정보 제공」으로 `performanceFeeTerms` 가 채워짐, G-03 = 모의 수령확인(`NoticeReceipt`)이 있음, G-08 = SCM · Corevia 모의 회신으로 공급 전망 · 입고 예정일이 기록됨. **모의 회신으로 채워졌다고 `unknowns` 에서 빼지 않는다** — 원본 공백은 그대로이고(A-33), 판단안이 해소된 것처럼 보이면 S-12 와 어긋난다. 그 판단안을 만든 시점의 상태를 저장한다(나중에 바뀌어도 저장된 판단안은 그대로 — 스냅샷). 지금 구현은 계약 판단안에서 G-02 · G-03 을 목록에서 뺀다(`domain/assessment.ts` `unknownIds`).
+- **미확인 목록의 공백 상태** (2026-11-14 결정, 10-1 ⓐ · BE-21): `unknowns[].status` = `'OPEN'`(미확인) 또는 `'FILLED_BY_MOCK'`(모의 회신으로 보완 — 원본 공백은 그대로), `statusText` 는 그 표시 문구. 판정은 S-12 공백 상태(BE-12)와 **같은 함수 · 같은 값**을 쓴다: G-02 = 에이전시 모의 「정보 제공」으로 `performanceFeeTerms` 가 채워짐, G-03 = 모의 수령확인(`NoticeReceipt`)이 있음, G-08 = SCM · Corevia 모의 회신으로 공급 전망 · 입고 예정일이 기록됨. **모의 회신으로 채워졌다고 `unknowns` 에서 빼지 않는다** — 원본 공백은 그대로이고(A-33), 판단안이 해소된 것처럼 보이면 S-12 와 어긋난다. 그 판단안을 만든 시점의 상태를 저장한다(나중에 바뀌어도 저장된 판단안은 그대로 — 스냅샷). **구현됨**(BE-21, LOG-030 — 코드 확인): 판정 함수는 `domain/gaps.ts` 의 `gapStatus` · `gapState` 하나이고 `GAP_STATUS_TEXT` 가 문구("미확인" / "모의 회신으로 보완 — 원본 공백은 그대로")를 정한다. S-12(`registryView`)와 판단안(`assessment.ts`)이 같은 함수를 쓴다. AI 도구 `get_open_gaps` 의 반환값에도 `status` · `statusText` 가 들어간다(기록 `rec-001` 의 도구 출력으로 확인). 테스트 `tests/api/be-21-24.test.ts` BE-21 5건.
 - **AI 가 만든 숫자는 저장하지 않는다.** 판단안의 모든 숫자는 `facts` / `ruleResults` 의 값을 참조한다(CLAUDE.md 규칙 9). 2단계 구현은 이를 **숫자 출처 검증**(`domain/provenance.ts`)으로 강제한다: 문장(권고 이유 · 관점 · 대안 제목 · 효과 · 위험)의 숫자는 `facts` · `ruleResults` 값만 허용, 주장 숫자(예상 GMV 등)는 `claimsCited` 에만, `facts` 에 `CLAIM` 값이 있으면 위반. 날짜 · ID · 절 번호 · 0~12 작은 정수 · 연도는 숫자로 보지 않는다. 실시간 AI 결과가 검증을 통과하지 못하면 저장하지 않고 결정적 모의 문장으로 대체한다(`aiMode = MOCK`, `fallbackReason` 기록).
 - **AI 가 정하는 것은 문장과 계약 대안(A/B/C) 권고 하나뿐**이다. 숫자 · 권한자 · 건별 권고(`proposedDecisions`)는 `domain/assessment.ts` 가 결정적으로 만든다. 권고 대안 ID 는 제출 도구 스키마의 enum 으로 제한된다.
-- **시연은 모의 판단안으로 한다** (2026-11-14 사용자 결정, 9-1). 실시간 AI 확인(BE-15)은 보류. 모의 모드에서는 같은 도구 6개를 코드가 직접 실행하고(`toolCalls[].actor = 'SYSTEM'`), 문장은 결정적 문장, 계약 대안 권고는 규칙(`domain/assessment.ts`)이 정한다. 숫자 · 권한자 · 건별 권고 · 상태 전이는 실시간이든 모의든 같으므로 시연 흐름(상신 → 회신 → 상태 변경 → 다음 판단)에 영향이 없다. 화면은 헤더 · 판단안에 `모의` 표시를 유지한다(UI-06).
+- **시연 런타임의 판단안은 모의다** (2026-11-14 사용자 결정 (b), 9-1 — `AOURA_AI_MODE=mock`). 실제 Claude 실행은 **1회 확인**했고(2026-11-14 17:19 KST, 계약 판단안) 그 기록을 운영 판단안과 **따로** 보여준다(기록 재생 — 운영 상태 `assessments` 에 넣지 않는다, DD-050). 모의 모드에서는 같은 도구 6개(조회 5개 + 제출 1개)를 코드가 직접 실행하고(`toolCalls[].actor = 'SYSTEM'`), 문장은 결정적 문장, 계약 대안 권고는 규칙(`domain/assessment.ts`)이 정한다. 숫자 · 권한자 · 건별 권고 · 상태 전이는 실시간이든 모의든 같으므로 시연 흐름(상신 → 회신 → 상태 변경 → 다음 판단)에 영향이 없다. 화면은 헤더 · 판단안에 `모의` 표시를 유지한다(UI-06).
 - **판단안 저장 · 이력** (2단계): `WorldState.assessments` 에 쌓인다. 저장할 때 이력 1행 — `entityType = 'ASSESSMENT'`, `fromStatus = null → toStatus = 'CREATED'`, `actorRole = 'AI_AGENT'`, `actorKind = 'AI'`(실시간) 또는 `'MOCK'`, `ruleIds` = 판단안이 쓴 규칙, 사유에 버전 · 권고 · 모의 대체 이유. **판단안은 어떤 엔티티의 상태도 바꾸지 않는다**(3-1 "AI 는 어떤 전이도 직접 일으키지 않는다").
 - **빈 대기 요청에 판단안 자동 연결**: 판단안을 저장할 때, `assessmentId` 가 비어 있는 `PENDING` 승인요청 중 같은 `subjectType` 이고 대상이 판단안 대상에 모두 들어 있는 요청에 판단안 ID 를 채운다(이력 1행, 승인요청 상태 유지). 예: ② 권한 재판정으로 시스템이 만든 PLAN-004 재승인 요청에 ASM-004 가 붙는다.
 - **동시성**: 판단안은 상태를 읽은 버전에서만 저장된다. AI 호출 중 다른 처리로 상태가 바뀌었으면 409 `CONFLICT`("판단안을 만드는 사이 상태가 바뀌었습니다 — 다시 만드세요").
 - API 응답(`AssessmentView`)은 여기에 `mock`(= `aiMode === 'MOCK'`) · `provenance`(`{ok, violations[]}`, 저장된 판단안은 항상 ok) · `approvalRequestIds`(이 판단안을 근거로 한 승인요청)를 더한다.
+- **기록 재생 타입** (4단계, `api-types.ts`): `RecordedAssessmentView` = `AssessmentView` 에서 `aiMode` 만 `'RECORDED'` 로 바꾼 것. `RecordedRunView` = `{id(REC-nnn), aiMode: 'RECORDED', label, calledNow: false, inOperationalState: false, executedAt, finishedAt, executedAtKst, model, request{sdk, thinking, effort, maxTokens, system, user, tools[]}, scenario{steps[], simNow, persistence, rawSource, invokedVia}, assessment: RecordedAssessmentView, followUp{approvalRequests[], audit[]}, basisCheck{ok, replayedSteps, mismatches[]}}`. 운영 타입의 `aiMode` 는 넓히지 않았다 — `LIVE` 는 "지금 모델이 만든 것"만 뜻하게 둔다(9-1 표시 규칙).
 
 #### ApprovalRequest
 | 필드 | 타입 | 비고 |
@@ -277,13 +282,14 @@ warnings?: string[]
 | `status` | `ApprovalStatus` | 2-3절 |
 | `version` | `number` | 첫 상신 1. `supersedesId` 가 있으면 **이전 요청 version + 1** (재상신 · 재승인 · 권한 재판정 재상신 모두 같은 규칙) |
 | `supersedesId` | `string \| null` | 권한 재판정 · 재상신 시 이전 요청 |
+| `proposedSource` | `'SUBMITTER'` (선택) | 4단계(BE-22): 권고안이 근거 판단안 권고와 **다른** 상신자 지정 결정일 때만 저장. 없으면 판단안 · 규칙 권고 그대로. API(`ApprovalView.proposedSource`)는 항상 `'ASSESSMENT' \| 'SUBMITTER'` 로 준다 |
 
 - **요청 ID(`APR-nnn`)는 생성 순서 일련번호일 뿐 의미가 없다.** 프리셋마다 재생하는 이벤트가 달라 같은 의미의 요청도 번호가 달라진다(예: ③ 재상신 요청은 ③ 프리셋에서 `APR-004`). 수용 기준 · 테스트 · 모의 회신은 번호가 아니라 **의미(대상 · requiredRole · version · supersedesId)** 로 요청을 찾는다. 문서의 `APR-00n` 표기는 해당 프리셋에서의 예시다.
 - **재상신 근거 판단안 · 권고 결정** (2026-11-14 확정, 계약 `RESUBMIT` 작업 완료 — LOG-023 결함 · LOG-025 수정 · 10-2):
   1. **근거 판단안** = 작업 완료 요청이 지정한 판단안(`payload.assessmentId`), 지정하지 않으면 **그 시점 최신 계약 판단안**(같은 계약 대상 중 버전이 가장 높은 것). 새 요청의 `assessmentId` 에 넣는다. 없는 판단안 ID → 404 `NOT_FOUND`, 계약 판단안이 아닌 것 → 422 `VALIDATION`, 어느 경우든 상태 불변(작업도 열린 채).
   2. **권고 결정(`proposed`)** = 근거 판단안의 권고 대안의 결정. 이전 요청의 권고를 복사하지 않는다 — 반려된 권고안을 그대로 다시 올리면 근거 판단안과 요청 권고가 어긋나 권한자가 틀린 안에 회신한다(③ 분기 A: ASM-003 권고 C 해지인데 재상신 요청이 `RENEGOTIATE` 였던 결함).
-  3. **상신자 지정 결정**: `payload.proposedDecision`(`RENEW_SAME` · `RENEGOTIATE` · `TERMINATE`)이 오면 그 값이 우선한다 — 무엇을 올릴지는 상신자(계약 담당)의 일이고 결정은 여전히 권한자 회신으로만 확정된다(R-AUTH-05). 단 판단안 권고와 다르면 **숨기지 않는다**: 승인요청 생성 이력 사유에 "상신자 지정 결정 {결정} — 근거 판단안 {ID} 권고 {결정} 와 다름"을 남기고, API(`ApprovalView`)가 `proposedSource: 'ASSESSMENT' | 'SUBMITTER'` 와 판단안 권고 문구를 준다(BE-22). 화면 입력은 두지 않는다(API 전용).
-  4. **계약 판단안이 하나도 없으면 재상신을 거부한다** — 422 `INFO_MISSING` "근거 판단안이 없습니다 — 판단안을 만든 뒤 재상신하세요", 상태 불변(BE-22. 지금 구현은 이전 요청의 권고를 유지하고 `assessmentId = null` 로 요청을 만든다). 이유: 승인요청은 근거 판단안의 숫자 스냅샷 위에서 결정된다(위 `assessmentId`). 근거 없이, 그것도 반려된 권고를 그대로 실어 28억 계약을 권한자에게 올리는 경로를 두지 않는다. API 경로에서는 첫 상신이 판단안에서 만들어지므로 이 경우가 생기지 않고, 도메인 함수 직접 호출(테스트)에서만 생긴다. 근거 판단안의 권고가 "권고 없음"(`NONE`)이고 상신자 지정도 없으면 지금처럼 422.
+  3. **상신자 지정 결정**: `payload.proposedDecision`(`RENEW_SAME` · `RENEGOTIATE` · `TERMINATE`)이 오면 그 값이 우선한다 — 무엇을 올릴지는 상신자(계약 담당)의 일이고 결정은 여전히 권한자 회신으로만 확정된다(R-AUTH-05). 단 판단안 권고와 다르면 **숨기지 않는다**: 승인요청 생성 이력 사유에 "상신자 지정 결정 {결정} — 근거 판단안 {ID} 권고 {결정} 와 다름"을 남기고, API(`ApprovalView`)가 `proposedSource: 'ASSESSMENT' | 'SUBMITTER'` 와 판단안 권고 문구(`assessmentDecisionText` — 계약 요청만, 판단안이 없거나 권고 없음이면 null)를 준다(BE-22 **구현됨**, LOG-030). **`SUBMITTER` 판정 기준 (4단계 확정 — 구현을 채택)**: 상신자가 결정을 지정했고 **그 값이 근거 판단안 권고와 다를 때만** `SUBMITTER` 다. 지정했지만 판단안 권고와 같으면 `ASSESSMENT` 이고, 지정 사실은 이력 사유 "상신자 지정 결정 {결정} — 근거 판단안 {ID} 권고와 같음"으로만 남는다. 이유: 화면 문구가 "상신자 지정 — 판단안 권고와 다름"이라, 같은 값에 `SUBMITTER` 를 붙이면 그 문구가 거짓이 된다(이전 판의 "지정이면 `SUBMITTER`"를 고침). 화면 입력은 두지 않는다(API 전용).
+  4. **계약 판단안이 하나도 없으면 재상신을 거부한다** — 422 `INFO_MISSING` "근거 판단안이 없습니다 — 판단안을 만든 뒤 재상신하세요", 상태 불변(BE-22 **구현됨** — `domain/workflow.ts` `completeTask`, 테스트 `be-21-24.test.ts` "계약 판단안이 하나도 없으면 재상신 거부". 이전 요청의 권고를 유지하던 ③ 순위는 삭제됐다). 이유: 승인요청은 근거 판단안의 숫자 스냅샷 위에서 결정된다(위 `assessmentId`). 근거 없이, 그것도 반려된 권고를 그대로 실어 28억 계약을 권한자에게 올리는 경로를 두지 않는다. API 경로에서는 첫 상신이 판단안에서 만들어지므로 이 경우가 생기지 않고, 도메인 함수 직접 호출(테스트)에서만 생긴다. 근거 판단안의 권고가 "권고 없음"(`NONE`)이고 상신자 지정도 없으면 지금처럼 422.
   5. **반려 뒤 판단안을 다시 만들지 않고 재상신**(최신 판단안 = 반려된 요청의 근거)하는 것은 막지 않는다 — 요청 권고와 근거 판단안이 서로 맞고, 다시 올릴지는 상신자 판단이다. 시연 절차는 재판단(v2) 뒤 재상신이고(DEMO S3-2 → S3-3), S-07 재상신 양식이 근거 판단안의 버전 · 권고를 보여 무엇이 올라가는지 알 수 있게 한다(FE-16).
 - 이전 요청의 상태 처리: 이전 요청이 아직 `PENDING` 이면 `SUPERSEDED` 로 닫는다. 이미 회신된 요청(`APPROVED` · `REJECTED` 등)은 **상태를 그대로 두고** 새 요청의 `supersedesId` 로만 연결한다(회신 기록은 사실이므로 바꾸지 않는다). 회신된 요청 안의 일부 건만 재승인이 필요해진 경우(② APR-003 의 PLAN-004)도 같다 — 그 건의 승인 효력 상실은 건의 이력(`APPROVED → REAPPROVAL_REQUIRED`)으로 남긴다.
 
@@ -519,7 +525,7 @@ PENDING_APPROVAL ──(조건 변경으로 requiredRole 상향, R-AUTH-06 RESUB
 | `CONFIRM_RECEIPT` · `RENOTIFY` | 에이전시 수령확인 회신 | `DONE` · `AGENCY` / `MOCK` | 구현됨 |
 | 계약 `INFO_REQUEST` | 에이전시 정보 제공 · 정보 부족 · 거절 회신 | `DONE` + 결과 메모 · `AGENCY` / `MOCK` | 구현됨 |
 | SCM `REPLENISHMENT_REVIEW` · `INFO_REQUEST` | SCM · Corevia 회신(1-3 Event 상대별 효과) | `DONE` · 회신자 / `MOCK` | 구현됨 |
-| 계약 **`REVIEW_BEFORE_DEADLINE`** | 같은 계약의 **`RESUBMIT` 완료**(새 승인요청 생성) | **`CANCELLED`** · `SYSTEM` / `SYSTEM`, 사유 "재상신 완료로 종료 — 재검토 결과는 재상신 요청 {ID} · 근거 판단안 {ID}" | **결정 10-1 ⓒ — BE-23**(지금은 열린 채 남아 7/15 뒤 OVERDUE) |
+| 계약 **`REVIEW_BEFORE_DEADLINE`** | 같은 계약의 **`RESUBMIT` 완료**(새 승인요청 생성) | **`CANCELLED`** · `SYSTEM` / `SYSTEM`, 사유 "재상신 완료로 종료 — 재검토 결과는 재상신 요청 {ID} · 근거 판단안 {ID}" | **구현됨** (BE-23, LOG-030 — 결정 10-1 ⓒ). 이미 `DONE` 인 재검토 작업은 그대로 둔다 |
 
 - `REVIEW_BEFORE_DEADLINE` 을 `DONE` 이 아니라 `CANCELLED` 로 닫는 이유: 사람이 재검토 완료를 기록한 것이 아니라 재상신으로 더 할 일이 없어진 것이다(이력을 사실대로). 계약 담당이 재상신 전에 직접 완료했다면 그 `DONE` 을 그대로 둔다. 재상신이 다시 반려되면 새 재검토 · 재상신 작업이 생긴다(3-1, 지금 동작 유지).
 - **자동으로 닫지 않는 작업**: `DOCUMENT_CONDITIONS`(승인조건 문서화, BPMN t4)는 사람이 실제로 해야 하는 일이라 통보 발송 · 수령확인이 끝나도 닫지 않는다 — 완료하지 않으면 기한(통보 기한 D-1) 뒤 `OVERDUE` 로 보이는 것이 맞다. `REPORT_TO_GROUP` 도 같다. 시연 절차에 완료 단계를 둔다(DEMO S1-6 · S3-3). 자동 갱신(③-B) 뒤 남은 재검토 · 재상신 작업도 닫지 않는다(하지 않은 일이다).
@@ -715,7 +721,7 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ## 7. 1단계 구현 반영 · 후속 작업 (2026-11-14)
 
-> 2026-11-14 이후 바뀐 것: 실시간 AI 판단안은 **보류**(사용자 결정 — 시연은 모의 판단안, [9-1](#9-1-사용자-결정--실시간-ai-판단안-보류-시연은-모의)). 아래 7-3 의 프론트 작업은 모두 처리됨(LOG-017).
+> 2026-11-14 이후 바뀐 것: 실시간 AI 판단안은 한때 보류였다가 **실제 실행 1회 + 기록 재생**으로 정해졌다(사용자 결정 (b) — 시연 런타임은 모의 판단안, [9-1](#9-1-사용자-결정--ai-방식-b-실제-실행-1회--기록-재생)). 아래 7-3 의 프론트 작업은 모두 처리됨(LOG-017).
 
 기준: 백엔드 · 프론트엔드 1단계(커밋 `be79a9d`, `npm run check` 141 테스트 통과 — devlog LOG-002 · LOG-004) 보고와 `app/src/domain/` 코드 대조. 코드 동작은 `workflow.ts` · `authority.ts` · `inventory.ts` · `types.ts` 와 `app/tests/` 를 읽어 확인했다.
 
@@ -781,7 +787,7 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ## 8. 2단계 백엔드 반영 · 완료 조건 점검 · 후속 작업 (2026-11-14)
 
-기준: 백엔드 2단계 보고(미커밋 작업본)와 `app/src/domain/{types,api-types,workflow,assessment,provenance,errors,registry}.ts` · `app/src/server/{service,http}.ts` · `server/db/schema.ts` · `src/app/api/**/route.ts`(24개)를 읽어 대조했다. 실행 확인은 백엔드 보고를 인용했고, 기획이 직접 돌린 것은 `tsc --noEmit`(프론트 진행 중 오류 — 7-2 상태)과 원본 행 수 재계산(1-1)뿐이다. 실시간 AI 경로는 **미확인**(크레딧 부족 400 → 모의 대체만 확인) — 2026-11-14 사용자 결정으로 **확인을 보류**하고 시연은 모의 판단안으로 한다([9-1](#9-1-사용자-결정--실시간-ai-판단안-보류-시연은-모의)). 아래 8-3 점검표는 [9-4](#9-4-완료-조건-재판정)에서 다시 판정했다.
+기준: 백엔드 2단계 보고(미커밋 작업본)와 `app/src/domain/{types,api-types,workflow,assessment,provenance,errors,registry}.ts` · `app/src/server/{service,http}.ts` · `server/db/schema.ts` · `src/app/api/**/route.ts`(24개)를 읽어 대조했다. 실행 확인은 백엔드 보고를 인용했고, 기획이 직접 돌린 것은 `tsc --noEmit`(프론트 진행 중 오류 — 7-2 상태)과 원본 행 수 재계산(1-1)뿐이다. 실시간 AI 경로는 **미확인**(크레딧 부족 400 → 모의 대체만 확인) — 그 뒤 같은 날 17:19 KST 에 실제 실행 1회가 성공했다 — 시연 런타임은 모의 판단안, 실제 실행은 기록 재생으로 보인다([9-1](#9-1-사용자-결정--ai-방식-b-실제-실행-1회--기록-재생)). 아래 8-3 점검표는 [9-4](#9-4-완료-조건-재판정)에서 다시 판정했다.
 
 ### 8-1. 이번에 문서에 반영한 것
 
@@ -807,9 +813,11 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 | 에이전시 「정보 제공」 → `performanceFeeTerms` 에 회신 문구(MOCK) 기록, G-02 를 판단안 `unknowns` 에서 뺌, 권한 판정 금액은 하한 28억 유지 | **채택 (A-33)**, 조건 1건 → BE-12 | 회신이 다음 판단에 반영되고(완료 조건 1 「바뀐 상태가 다음 판단에 쓰임」), 값은 `모의` 배지로 사실과 구분된다. 문구를 금액으로 바꾸지 않으므로 A-23 과 충돌하지 않는다. 하한만으로도 권한자는 그룹 CEO/이사회. **조건**: 원본 공백 G-02 는 해소된 것이 아니다 — 지금 `GET /api/data-registry` 의 `gaps[].open` 이 G-02 · G-03 · G-08 을 모의 회신 뒤 `false`(해소)로 돌려주므로 "모의 회신으로 보완(원본 공백 그대로)" 상태를 따로 둔다(BE-12) |
 
 ### 8-3. 완료 조건 5개 점검 (PROBLEM.md 4절)
-점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-3단계-뒤)에 둔다(시연 대응표 0-1 바로 아래 — 프론트 2단계 뒤 다시 판정, [9-4](#9-4-완료-조건-재판정)). 백엔드 2단계 시점의 판정(기록): 조건 1~4 는 **도메인 · API 테스트로는 충족, 화면 연결 · 배포가 남아 "일부"**, 조건 5 는 출처 라벨 · 숫자 출처 검증은 있으나 가정 목록 사본(A-32~A-34 누락) · 공백 상태 표시(BE-11 · BE-12)가 남아 "일부". 제출 가능 판정은 프론트 2단계 · `npm run check` 통과 · docker 배포 뒤.
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-4단계-뒤)에 둔다(시연 대응표 0-1 바로 아래 — 프론트 2단계 뒤 다시 판정, [9-4](#9-4-완료-조건-재판정)). 백엔드 2단계 시점의 판정(기록): 조건 1~4 는 **도메인 · API 테스트로는 충족, 화면 연결 · 배포가 남아 "일부"**, 조건 5 는 출처 라벨 · 숫자 출처 검증은 있으나 가정 목록 사본(A-32~A-34 누락) · 공백 상태 표시(BE-11 · BE-12)가 남아 "일부". 제출 가능 판정은 프론트 2단계 · `npm run check` 통과 · docker 배포 뒤.
 
 ### 8-4. 백엔드 새 작업
+
+> **상태 (2026-11-14 갱신(5))**: **BE-15 실행됨** — 2026-11-14 17:19 KST 실제 실행 1회 성공 · 기록 저장 · 재생 API(9-1, LOG-030). **BE-14 는 구현 · 로컬 docker 확인, 실배포 대기** — 수용 기준 · 결과는 [11-3](#11-3-백엔드-작업). 아래 두 행의 "보류" · "사용자 결정 대기"는 그 전 시점의 기록이다.
 
 | ID | 파일 | 할 일 | 수용 기준 |
 |---|---|---|---|
@@ -834,34 +842,99 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 기준: 프론트엔드 2단계 보고(devlog LOG-017), devlog README 「열린 확인 필요」, DD-035~039, 코드 읽기(`app/src/app/**` — `assessments/[id]/page.tsx` · `events/event-forms.tsx` · `scenarios/page.tsx` · `tasks/task-actions.tsx`, `app/src/components/**` — `approval/reply-panel.tsx` · `shell/clock-dialog.tsx` · `mutation/result-dock.tsx`, `app/src/server/service.ts` · `domain/workflow.ts` 의 쓰기 경로). 실행 결과는 메인 세션 재검증(LOG-017, 14:29 — `npm run check` 222 통과 · 2 건너뜀, `next build` 종료 0, 화면 캡처 42장은 저장소 밖)을 인용했고, 기획은 이번에 아무것도 실행하지 않았다.
 
-### 9-1. 사용자 결정 — 실시간 AI 판단안 보류, 시연은 모의
+### 9-1. 사용자 결정 — AI 방식 (b): 실제 실행 1회 + 기록 재생
 
-- **결정 (2026-11-14, 사용자)**: AI 판단안 문장은 이 과제 시연의 필수 요건이 아니다. 실시간 AI 확인(BE-15)은 보류한다. 판단안 문장은 모의(결정적 문장)로 시연하고 화면에 `모의` 표시를 유지한다.
-- **시연 흐름에 영향이 없는 이유**: 계산(공헌이익 · 재고 커버 · 재전망) · 권한자 · 건별 권고 · 상태 전이는 규칙 코드가 정한다(1-3 Assessment — AI 가 정하는 것은 문장과 계약 대안 권고 하나). 모의 모드에서도 도구 6개를 코드가 같은 입력으로 실행하고(`toolCalls[].actor = 'SYSTEM'`), 숫자 출처 검증을 거친 판단안이 승인요청 → 회신 → 상태 변경 → 다음 판단으로 이어진다. 모의 모드의 계약 대안 권고도 규칙이 정한다.
-- **운영**: 배포 · 시연 환경은 `AOURA_AI_MODE=mock` 으로 실시간 호출을 시도하지 않는다(BE-14 수용 기준에 추가). 키(secret)는 등록된 채로 둔다 — 다시 열 때 바로 쓸 수 있게.
-- **반영한 곳**: 1-3 Assessment · 0 표기(실시간 문장 표지) · 7 · 8 머리말 · 8-4 BE-15 · [TECH_STACK 2-3 · 2-4 · 5 · 5-1](TECH_STACK.md#2-4-claude-사용-방식) · [DEMO 1 시드 · 0-2](DEMO_SCENARIOS.md) · [SCREEN_SPEC 0-1 · S-05](SCREEN_SPEC.md).
+> 2026-11-14 16:23 의 첫 결정("실시간 AI 확인 보류 · 시연은 모의", DD-040)을 같은 날 17:11 의 사용자 결정 **(b)** 가 대체했다(DD-049 · DD-050). 이 절은 (b) 기준으로 다시 썼다(갱신(5)). 근거: 기획이 `app/src/server/ai/recorded/index.ts` · `rec-001-contract.json` · `domain/api-types.ts` · `tests/api/recorded-run.test.ts` 를 읽어 확인했고, 2026-11-14 17:28 에 `npm run check` 를 직접 실행해 통과(24 파일 · 1 건너뜀, 291 통과 · 2 건너뜀)를 확인했다. 실행 경위(크레딧 · 재시도)는 devlog LOG-030 인용. **기획은 AI 를 호출하지 않았다.**
 
-**과제 문서와의 대조** — 완료 조건 5개와는 충돌하지 않는다. 다만 **심사 관점 · 자기점검 항목 하나와 긴장**이 있다(근거는 원문 인용).
+- **결정 (2026-11-14, 사용자)**: 실제 Claude(`claude-opus-5-5`)로 판단안을 **한 번만** 만들고 그 실행을 기록으로 남긴다. 이후에는 AI 를 다시 호출하지 않고 시연에서 **기록을 보여주기만** 한다. 배포 · 시연 런타임은 `AOURA_AI_MODE=mock`.
+- **이유**: ① 심사 관점("AI의 역할이 실제 판단과 처리에 사용", "AI가 맡는 역할과 실제 입력 · 출력")에 실제 입력 · 출력 증거를 댄다 — 아래 증거 표 ② 시연 중 호출 비용 · 지연 · 실패 경고를 없앤다 ③ 프리셋 재생의 결정성(같은 결과)을 지킨다.
+- **시연 흐름에 영향이 없는 이유**(그대로): 계산 · 권한자 · 건별 권고 · 상태 전이는 규칙 코드가 정한다(1-3 Assessment — AI 가 정하는 것은 문장과 계약 대안 권고 하나). 모의 모드에서도 같은 도구를 코드가 실행하고(`toolCalls[].actor = 'SYSTEM'`) 숫자 출처 검증을 거친 판단안이 승인요청 → 회신 → 상태 변경 → 다음 판단으로 이어진다.
 
-| 출처 | 원문 (요지) | 판정 |
+**실제 실행 1회 — 기록에서 확인한 사실** (`rec-001-contract.json`, 기록 ID `REC-001`)
+
+| 항목 | 값 | 기록의 위치 |
 |---|---|---|
-| PROBLEM 4절 완료 조건 1~5 | 입력 → 승인 → 상태 변경, 세 상황, 확장, 부서 영향, 원본 · 가정 구분 — **AI 언급 없음** | 충돌 없음 |
-| PROBLEM 4-1 · `A01.html` 3절 여섯 관점 「AI · 사람 · 도구의 운영 역할」 | "AI가 받는 정보 · 만드는 결과, 사람의 승인 · 예외 판단, 도구 실행과 계획 · 상태 갱신으로 이어지는 **실제 흐름**" | **긴장**. 모의 모드에서 판단안 문장을 쓰는 것은 모델이 아니라 결정적 코드다. 보여줄 수 있는 것: AI 에 주는 입력(도구 6개 반환값), 출력 계약(`submit_assessment` 스키마 · 권고 enum 제한), 숫자 출처 검증, 사람 승인, 도구의 상태 변경. 실제 모델 출력은 없다 |
-| `A01.html` 심사 관점 「작동하는 운영 시스템」 | "운영 중 **AI의 역할이 실제 판단과 처리에 사용**되고, 사람 · 도구와 연결되어 …" | **긴장** (가장 직접적) |
-| `A04.html` 자기점검 · 설명 문항 | "운영 중 AI가 맡는 역할과 **실제 입력 · 출력**이 사람의 결정 · 도구 실행 · 후속 처리에 쓰이는 모습을 보여줄 수 있다", "실제 작동 · 모의 처리 · 설계 단계인 부분을 구분했다" | **긴장** — 단, 구간을 정직하게 구분하면 답할 수 있다(아래 표) |
-| `A01.html` 5절 · `A03.html` FAQ | "승인 · 발주 · 통지 등 **외부 업무는 모의 처리**로 시연할 수 있습니다" | 모의 허용 대상은 외부 업무다. AI 판단 지원은 외부 업무가 아니라서 **이 문구를 AI 모의의 근거로 쓸 수 없다** |
-| PROBLEM 7절 자기점검 | "여섯 관점(… AI/사람/도구 역할 …)을 실제 사례로 보여줄 수 있다" | 위와 같은 긴장 |
+| 실행 시각 | 2026-11-14 17:19:46 ~ 17:20:07 KST (약 21초) | `executedAt` · `finishedAt` (UTC 08:19:46 ~ 08:20:07) |
+| 모델 | `claude-opus-5-5` — 요청 값이 아니라 **API 응답의 model 필드** | `assessment.aiTrace[].model` |
+| 호출 설정 | 공식 SDK `@anthropic-ai/sdk` · thinking `adaptive` · effort `medium` · max_tokens 16,000 · 도구 6개 모두 `strict` | `request` |
+| 입력 상태 | 시드(2026-07-01 09:00) → 갱신 통보 접수(계약 「검토 중」). **기안 접수 전** | `scenario.steps` |
+| 실행 경로 | route handler 직접 호출(route → service → PgStore → SDK), 저장소 로컬 Postgres, 원본은 파일. **HTTP 서버 · 배포 환경이 아니다** | `scenario.invokedVia` · `persistence` · `rawSource` |
+| 모델 응답 | 2회 — ① `stop_reason: tool_use`, 입력 1,985 · 출력 154 토큰 ② `tool_use`, 입력 5,532 · 출력 1,472 토큰. 응답별 메시지 ID 기록 | `assessment.aiTrace` |
+| AI 가 부른 도구 | `get_facts`(전체) · `get_rule_results` · `get_alternatives` · `get_open_gaps` · `get_claims` → `submit_assessment`. 6건 모두 `actor: 'AI'`, 입력 · 반환값 전체 기록 | `assessment.toolCalls` |
+| AI 가 받은 정보 | 사실 19건(출처 라벨 · 스케일 포함) · 규칙 결과 3건(R-AUTH-02 → 그룹 CEO/이사회 · 연 금액 하한, R-DL-03 → D-16 정보 단계, R-DL-02 → 유효 통보 없으면 자동 갱신) · 대안 A/B/C · 공백 5건(G-01 · 02 · 03 · 04 · 09 모두 `OPEN`) · 주장 3건(회의록 — "판단 근거 아님" 표시) | `toolCalls[].output` · `facts` · `ruleResults` · `alternatives` · `unknowns` · `claimsCited` |
+| AI 가 만든 결과 | 권고 대안 **B(조건변경 통보)** + 권고 이유 + 마케팅 · 재무 · 계약 · SCM 관점 문장 | `recommendation` · `perspectives` |
+| 검증 | 숫자 출처 검증 **통과**(위반 0건), 모의 대체 없음(`fallbackReason` 없음) | `provenance` |
+| 이어진 처리 | 승인요청 `APR-001` 생성 — 권한자 그룹 CEO/이사회(R-AUTH-02, **규칙이 정함**), 권고 `RENEGOTIATE`, 내부 기한 7/15 · 원본 기한 7/17, 근거 판단안 `ASM-001`. 이력 4행(계약 접수 `HUMAN` → 판단안 생성 `AI` → 승인요청 생성 `SYSTEM` → 계약 「승인 대기」 `SYSTEM`) | `followUp` |
+| 끝난 지점 | 승인요청 `PENDING` — **권한자 회신은 그 실행에 없다** | `followUp.approvalRequests[0].status` |
 
-제출 설명에서 쓸 구간 구분(`A04` 정의 — 실제 작동 = 입력에 따라 구현이 직접 처리, 모의 처리 = 가상의 외부 회신 · 승인 · 집행, 설계 단계 = 설명 · 명세):
+- 실행 경위(LOG-030 인용, 기획 미재확인): 사용자가 API 크레딧을 충전했고, 첫 시도는 400(크레딧 부족), 재시도 1회로 성공했다. 성공한 실행만 기록했다.
+- 기록 파일에는 키 · 요청 헤더 · 접속 문자열이 없다(테스트 "기록 파일에 키 · 헤더 · 접속 문자열이 없다").
 
-| 구간 | 구분 | 증거 |
+**기록 재생 — 실시간이 아니다 (표시 규칙)**
+
+재생은 `GET /api/assessments/recorded` → `RecordedRunsResponse {runs: RecordedRunView[]}`. **이 응답을 만들 때 AI 를 호출하지 않고, 운영 상태(`sim_state`)를 읽거나 바꾸지 않는다**(원본 데이터셋으로 근거 대조만 — 테스트 "운영 상태에 끼워 넣지 않는다 — 판단안 목록 · 이력 · 상태 버전 · meta.aiMode 불변").
+
+| # | 규칙 | 이유 |
 |---|---|---|
-| 규칙 계산 · 권한 판정 · 기한 감시 · 상태 전이 · 도구 6개 실행 · 숫자 출처 검증 · 모의 대체 | 실제 작동 | 테스트 222 · 화면 ① 전 구간(LOG-017) · S-05 도구 호출 목록 |
-| 승인 회신 · 외부 회신 · 회수 지연 등 모의 사건 | 모의 처리 | S-06 · S-02 · S-12 모의 목록 |
-| 판단안 문장 (모의 모드) | 모의 처리 — 결정적 문장. 화면 `모의` | S-05 `AI: 모의` |
-| 실시간 AI 문장 생성 (`claude-opus-5-5` + tool use) | **설계 단계** — 코드 · 테스트(모의 클라이언트)는 있으나 실제 호출 성공 기록 없음(400 크레딧 부족 1회) | TECH_STACK 2-3 · 2-4, `server/ai/*` |
+| 1 | 표지는 **`기록 재생`** — 화면 문구는 「실행 기록 · 재생」(프론트엔드 구현을 채택, 이 문서의 `기록 재생` 은 그 표지를 가리킨다)(`aiMode = 'RECORDED'`). `실시간` · `모의` 를 쓰지 않는다. 서버 문구 `label` — "실제 Claude 실행 기록(2026-11-14 17:19, claude-opus-5-5) — 재생, 지금 호출하지 않음" — 을 그대로 보인다 | 그 실행은 실제 호출이었지만 지금 화면에 보이는 것은 재생이다. `실시간` 이라고 쓰면 "지금 모델이 만든다"로 읽힌다 |
+| 2 | **운영 화면과 섞지 않는다** — 기록의 판단안 `ASM-001` · 승인요청 `APR-001` · 이력 4행은 그 실행 때 생긴 것의 **사본**이다. 운영 판단안 목록(S-03 · S-05) · 승인함(S-06) · 작업(S-07) · 처리 이력(S-11)에 넣지 않고, 기록 안의 ID 를 운영 화면 링크로 만들지 않는다(같은 번호가 지금 운영 상태의 다른 것을 가리킬 수 있다) | 운영 이력은 "지금 이 시스템에서 일어난 일"의 증거다. 기록을 끼워 넣으면 시연 중 AI 가 만든 것처럼 보이고 프리셋 결정성도 깨진다(DD-050) |
+| 3 | 헤더의 `AI: 모의` 는 그대로다(`GET /api/meta` `aiMode: MOCK`). 기록 재생 화면에서도 "지금 이 시스템의 [판단안 만들기] 는 모의로 동작한다"를 함께 적는다 | 기록 화면만 보고 운영 판단안도 실제 AI 문장으로 오해하지 않게 |
+| 4 | **`basisCheck`** 를 보인다 — 기록의 사실 · 규칙 결과 · 대안 · 공백 · 규칙 권고 · 주장 인용이 **지금 규칙 계산(같은 입력: 시드 → 통보 접수)** 과 같은지 서버가 매번 대조한 결과. `ok = false` 면 `mismatches` 를 경고로 보인다(숨기지 않는다) | 규칙 · 원본이 바뀌면 기록은 낡은 증거가 된다. 조용히 통과시키지 않는다(테스트 "근거 값이 달라지면 불일치로 드러난다") |
+| 5 | 기록 파일은 **고치지 않는다**(문장 다듬기 · 숫자 자릿수 정리 포함). 화면도 문장을 원문 그대로 보인다 | 증거의 무결성. 예: 관점 문장에 "명목 ROAS 1.3627673894502679" 처럼 도구가 준 값이 자릿수 그대로 인용돼 있다 — 보기 좋지 않지만 그대로 둔다(아래 한계 ⑤) |
+| 6 | 기록의 범위를 화면에 적는다 — "실행 1회 · 계약 판단안 1건 · 승인요청 생성까지" | 아래 한계 |
 
-- **사용자 확인 권장 (결정은 사용자)**: (a) 지금 결정대로 — 제출 설명에 AI 문장 구간을 「설계 단계」로 적는다. (b) 크레딧을 충전할 수 있으면 BE-15 를 **증거용 1회만** 실행해 기록을 남기고(실시간 판단안 1건, `provenance.ok`), 시연은 그대로 모의로 한다 — 이 경우 위 표의 마지막 행이 「실제 작동(1회 확인)」이 된다. 기획 의견: (b) 가 심사 관점의 긴장을 줄이는 가장 작은 조치다. (b) 를 하지 않아도 완료 조건 판정(9-4)은 바뀌지 않는다.
+**심사 관점에 대해 무엇을 증거로 제시하는가**
+
+대상 문구: `A01.html` 심사 관점 「작동하는 운영 시스템」 "운영 중 **AI의 역할이 실제 판단과 처리에 사용**되고, 사람 · 도구와 연결되어 …" · `A04.html` 자기점검 "운영 중 **AI가 맡는 역할과 실제 입력 · 출력**이 사람의 결정 · 도구 실행 · 후속 처리에 쓰이는 모습을 보여줄 수 있다" · PROBLEM 4-1 여섯 관점 「AI · 사람 · 도구의 운영 역할」.
+
+| 묻는 것 | 우리의 답 | 증거 (어디서 보나) | 구분 |
+|---|---|---|---|
+| **AI 가 받는 정보** | 조회 도구 5개의 반환값 — 사실(출처 라벨 · 스케일) · 규칙 결과 · 대안 · 공백 · 주장(참고 전용). 원본 파일을 직접 읽지 않고, 규칙 코드가 계산한 값만 받는다. 시스템 지시 · 사용자 요청 문장도 기록 | 기록 재생 화면 「AI 입력」 — `request.system` · `request.user` · `request.tools` · `toolCalls[0..4]` 입력 · 반환값 | 실제 작동 (1회) · 기록 재생 |
+| **AI 가 만드는 결과** | 계약 대안 권고 하나(enum 제한 — 기록에서는 **B**)와 문장(권고 이유 · 관점 4개). 숫자 · 권한자 · 건별 권고는 만들지 않는다 | 「AI 출력」 — `toolCalls[5]`(`submit_assessment` 입력) · `recommendation` · `perspectives` · `aiTrace`(메시지 ID · 모델 · stop_reason · 토큰) | 실제 작동 (1회) · 기록 재생 |
+| **검증** | 숫자 출처 검증 — 문장의 숫자가 도구 반환값에 있는지 코드가 검사. 통과 못 하면 저장하지 않고 모의 문장으로 대체 | 「검증」 — `provenance.ok = true` · 위반 0, `basisCheck`(지금 규칙 계산과 일치). 위반 시 대체는 단위 테스트(`tests/unit/agent.test.ts`) | 실제 작동 |
+| **사람** | 결정은 권한자 회신으로만 확정된다(R-AUTH-05). AI 는 어떤 상태도 바꾸지 않는다(상태 변경 도구 없음). 기록의 실행은 승인요청 `PENDING`(그룹 CEO/이사회 회신 대기)에서 끝났다 | 「사람 회신 대기」 — `followUp.approvalRequests[0]`. 회신 이후(승인 · 반려 · 조건부 → 상태 변경 → 다음 판단)는 운영 화면 시연 ①~④(S-06 · S-07 · S-11) | 기록: 실제 작동 (1회) / 회신: **모의 처리** |
+| **도구** | 규칙 엔진(권한 · 기한 · 공헌이익 · 재고 · 재전망)과 상태 전이. 승인요청의 권한자 · 기한은 규칙이 정했다 | 「승인요청」 — `routingReasons`(R-AUTH-02) · 이력 4행의 행위자(`HUMAN` · `AI` · `SYSTEM`). 운영 화면 S-05 도구 호출 목록 · S-11 | 실제 작동 |
+| **후속 처리에 쓰이는가** | 판단안이 승인요청의 근거(`assessmentId`)가 되고, 권고 대안의 결정이 요청의 권고안(`proposed`)이 된다 | `followUp.approvalRequests[0].assessmentId = ASM-001` · `proposed = RENEGOTIATE`. 운영 화면에서는 모의 판단안으로 같은 연결(S-05 → S-06) | 실제 작동 |
+
+**실제 작동 / 모의 처리 / 설계 단계 — 구분표 (제출 설명 · 자기점검용, 2026-11-14 4단계 뒤)**
+
+`A04` 정의: 실제 작동 = 입력에 따라 구현이 직접 처리 / 모의 처리 = 가상의 외부 회신 · 승인 · 집행 / 설계 단계 = 설명 · 명세만. 「확인」 열은 기획이 직접 확인한 것과 인용을 구분한다.
+
+| 구간 | 구분 | 증거 | 확인 |
+|---|---|---|---|
+| 원본 읽기(17 파일) · 출처 라벨 · 스케일 구분 | **실제 작동** | S-12, `Sourced` 값 | 테스트 통과(기획 직접 실행, 291) |
+| 규칙 계산 — 승인 권한(R-AUTH) · 기한(R-DL) · 실질 공헌이익(A05) · 재고 커버 · 자금 재전망 · 위약금 | **실제 작동** | 단위 테스트 · 골든 값(DEMO 부록 A), S-08 ~ S-10 | 테스트 통과 |
+| 상태 전이 · 기한 감시 · 작업 생성 · 처리 이력 | **실제 작동** | 시나리오 테스트 ①~④, S-11 | 테스트 통과 · 화면은 LOG-017 · 023 인용 |
+| 권한 검사 — 승인 회신 · 작업 처리 · 보충 초안(서버 422) | **실제 작동** | S-06 · S-07 [권한 검증 확인], `tests/api/role-guard.test.ts` | 테스트 통과 |
+| 조건 변경 처리 — 재전망 → 권한 재판정 → 재승인 요청 | **실제 작동** (입력 사건은 모의) | ② , S-10 | 테스트 통과 |
+| 저장 — Postgres(운영 상태 · 낙관적 잠금) | **실제 작동 (로컬 · 로컬 docker)** · 배포 환경(트랜잭션 풀러)은 **미확인** | `GET /api/meta` `persistence` | 로컬 docker 는 백엔드 보고 인용. 실배포 전(DEPLOY.md) |
+| AI 도구 실행(조회 5 + 제출 1) · 숫자 출처 검증 · 실패 시 모의 대체 | **실제 작동** | S-05 도구 호출 목록 · `provenance` | 테스트 통과 |
+| **AI 판단안 — 실제 Claude 가 도구로 근거를 조회해 권고 · 문장 작성** | **실제 작동 — 1회 실행 확인(2026-11-14 17:19 KST, 계약 판단안), 시연은 기록 재생** | 기록 `REC-001` · 기록 재생 화면(S-05R) · `GET /api/assessments/recorded` | 기록 파일 직접 확인 · 재생 테스트 10건 통과. 화면 구현됨(프론트엔드 보고). **알려진 결함 — 수정 중(BE-25)**: 번들 서버에서 `basisCheck` 불일치 경고 |
+| 시연 런타임의 판단안 문장([판단안 만들기] · 프리셋 재생) | **모의 처리** — 결정적 문장(코드), 화면 `모의`. 숫자 · 권고 등급 · 권한자는 규칙 계산(실제 작동) | S-05 `AI: 모의` | 테스트 통과 |
+| 권한자 회신(Masil 대표 · 그룹 CEO/이사회 · SCM 승인) | **모의 처리** — 사람이 역할을 바꿔 입력. 거절 · 정보 요청 · 조건부 포함 | S-06, S-12 모의 목록 | 테스트 통과 |
+| 에이전시 회신(수령확인 · 정보 제공 · 정보 부족 · 거절) · SCM · Corevia 회신(보충 필요 · 불필요 · 불가 · 정보 부족) | **모의 처리** | S-02 · S-03 · S-07, S-12 | 테스트 통과 |
+| 회수 지연 통보 · 집행일 변경 등 조건 변경 사건 | **모의 처리** | S-02 | 테스트 통과 |
+| 통보 발송 · 재통보 · 그룹 보고 · 승인조건 문서화의 **실제 집행** | **모의 처리** — 작업 완료 기록만 남고 외부로 나가는 것은 없다 | S-07 | — |
+| 가상 기준시각 · 시점 이동 | **모의 처리**(가정 A-21) — 실제 날짜가 아니다 | 헤더 · S-01 | 테스트 통과 |
+| 사람의 신원 확인(로그인) | **없음 · 설계 단계** — 역할 전환은 시연 장치. 서버는 요청의 역할 값을 검사할 뿐 누구인지는 확인하지 않는다 | 1-3 쓰기 행위별 허용 역할 | — |
+| 실제 Claude 로 기안 묶음 · 보충요청 판단안, 재판단(v2) 작성 | **설계 단계** — 코드 경로는 계약 판단안과 같지만 실제 실행 기록이 없다(모의 클라이언트 테스트만) | `server/ai/*` | — |
+| 시연 · 배포 환경에서 판단안을 실시간으로 생성 | **설계 단계(의도적으로 끔)** — 키는 등록돼 있고 `AOURA_AI_MODE` 를 빼면 켜지지만, 배포 환경에서 실행한 적이 없다 | TECH_STACK 2-4 | — |
+| 통보문 · 상신문 초안 작성(TECH_STACK 2-2 ⑤) · 검토 에이전트(2-3) | **설계 단계** — 구현 없음 | — | — |
+| 배포 주소에서의 동작 | **미확인** — 실배포 전. 배포 구성은 구현 · 로컬 docker 확인까지(BE-14) | DEPLOY.md | — |
+
+요지: **규칙 계산 · 상태 전이 · 권한 검사는 실제 작동, 권한자 · 에이전시 · SCM 회신과 조건 변경 사건은 모의 처리, AI 판단안은 실제 작동(1회) + 기록 재생, 시연 런타임의 판단안 문장은 모의 처리.**
+
+**한계 — 제출 설명에서 숨기지 않을 것**
+
+1. 실제 실행은 **1회 · 계약 판단안 1건**이다. 기안 묶음 · 보충요청 판단안과 재판단(v2)은 실제 AI 로 실행한 기록이 없다.
+2. 그 실행은 **승인요청 생성까지**다. 실제 AI 판단안에 사람이 회신해 상태가 바뀌는 장면은 기록에 없다 — 그 구간은 모의 판단안으로 같은 코드 경로를 시연한다.
+3. 실행 환경은 **로컬**(route handler 직접 호출 · 로컬 Postgres)이다. 배포 환경에서 실행한 것이 아니다.
+4. AI 권고(B)는 규칙이 낸 권고(`RENEGOTIATE`)와 **같았다**. AI 가 규칙과 다른 대안을 고른 실제 사례는 없다(고를 수 있는 대안은 제출 도구의 enum 으로 제한 — 단위 테스트로 확인).
+5. AI 문장에 도구 값이 자릿수 그대로 인용된 곳이 있다(명목 ROAS · 실질 ROAS 소수 16자리). 숫자 출처 검증은 통과했다 — 틀린 숫자가 아니라 읽기 불편한 표기다. 기록은 고치지 않는다.
+6. 시연 중에 누르는 [판단안 만들기] 는 **모의**다. "지금 AI 가 판단하고 있다"고 말하지 않는다.
+7. `A01.html` 5절 · `A03.html` FAQ 의 "승인 · 발주 · 통지 등 **외부 업무는 모의 처리**로 시연할 수 있습니다"는 외부 업무에 대한 허용이다. 시연 런타임의 판단안 문장이 모의인 근거로 이 문구를 쓰지 않는다 — 근거는 위 사용자 결정과 실제 실행 기록이다.
+
+- **반영한 곳**: 0 표기 · 1-3 Assessment · 8-4 · 11절, [TECH_STACK 2-3 · 2-4 · 5](TECH_STACK.md#2-4-claude-사용-방식), [DEMO 0-2 · 0-4 · 0-6 · 1 시드 · 5-1](DEMO_SCENARIOS.md), [SCREEN_SPEC 0-1 · S-05 · S-05R · 4절](SCREEN_SPEC.md).
 
 ### 9-2. 프론트엔드가 문서와 다르게 만든 6건 — 판정 (LOG-017)
 
@@ -885,11 +958,11 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ### 9-4. 완료 조건 재판정
 
-점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-3단계-뒤)(판정 단계에 「로컬 충족」 추가). 요지: 조건 3 · 4 · 5 는 **로컬 충족**(로컬 화면에서 증거 확인, 배포 주소 미확인), 조건 1 · 2 는 **일부**(1: 배포 · 작업 처리 서버 권한 검사 남음, 2: ③ 화면 미검증). 제출 가능 판정은 배포(BE-14 — 원본 CSV 포함 방식 사용자 결정 대기) · ③ 화면 검증(FE-13) · BE-17 뒤.
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-4단계-뒤)(판정 단계에 「로컬 충족」 추가). 요지: 조건 3 · 4 · 5 는 **로컬 충족**(로컬 화면에서 증거 확인, 배포 주소 미확인), 조건 1 · 2 는 **일부**(1: 배포 · 작업 처리 서버 권한 검사 남음, 2: ③ 화면 미검증). 제출 가능 판정은 배포(BE-14 — 원본 CSV 포함 방식 사용자 결정 대기) · ③ 화면 검증(FE-13) · BE-17 뒤.
 
 ### 9-5. 백엔드 새 작업
 
-> **상태 (2026-11-14, LOG-022)**: BE-17 · BE-18 · BE-19 · BE-20 **구현됨**(코드 확인: `domain/permissions.ts` · `workflow.ts` `completeTask` · `server/service.ts` `patchTask` · `createReplenishment`, 테스트 `tests/api/role-guard.test.ts`). BE-14 는 사용자 결정 대기, BE-15 는 보류 그대로.
+> **상태 (2026-11-14, LOG-022)**: BE-17 · BE-18 · BE-19 · BE-20 **구현됨**(코드 확인: `domain/permissions.ts` · `workflow.ts` `completeTask` · `server/service.ts` `patchTask` · `createReplenishment`, 테스트 `tests/api/role-guard.test.ts`). BE-14 는 사용자 결정 대기, BE-15 는 보류 그대로(이 문장은 3단계 시점 — 4단계에서 BE-15 실행됨 · BE-14 A안 확정, 11절).
 
 | ID | 파일 | 할 일 | 수용 기준 |
 |---|---|---|---|
@@ -902,7 +975,7 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ### 9-6. 프론트엔드 새 작업
 
-> **상태 (2026-11-14, LOG-023)**: FE-12 · FE-13 · FE-14 **완료**. FE-13 화면 검증 결과는 [DEMO 0-3](DEMO_SCENARIOS.md#0-3-수용-기준-검증-상태-2026-11-14-3단계-뒤).
+> **상태 (2026-11-14, LOG-023)**: FE-12 · FE-13 · FE-14 **완료**. FE-13 화면 검증 결과는 [DEMO 0-3](DEMO_SCENARIOS.md#0-3-수용-기준-검증-상태-2026-11-14-4단계-뒤).
 
 | ID | 화면 | 할 일 | 수용 기준 |
 |---|---|---|---|
@@ -939,6 +1012,8 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ### 10-4. 백엔드 새 작업
 
+> **상태 (2026-11-14, LOG-030)**: BE-21 · BE-22 · BE-23 · BE-24 **구현됨** — 코드 확인(`domain/gaps.ts` · `domain/workflow.ts` `completeTask` · `server/views/index.ts` `approvalView` · `server/scenarios.ts` `s4` · `checkScenario`)과 `tests/api/be-21-24.test.ts`(20건) 통과. 문서와 다르게 구현된 1건(BE-22 `SUBMITTER` 판정)은 [11-2](#11-2-be-2124-구현-대조). BE-14 는 구현 · 로컬 docker 확인(실배포 대기), BE-15 는 실행됨.
+
 | ID | 파일 | 할 일 | 수용 기준 |
 |---|---|---|---|
 | **BE-21** | `domain/assessment.ts`(`unknownIds` · `gap`) · `domain/types.ts`(`Assessment.unknowns`) · `server/views`(`gapStatus` 를 도메인에서 함께 쓰게) · 테스트 | 판단안 `unknowns` 항목에 `status: 'OPEN' \| 'FILLED_BY_MOCK'` · `statusText` 추가. 모의 회신으로 채워진 공백(G-02 · G-03 · G-08)을 목록에서 빼지 않는다. 판정은 S-12 와 같은 함수 | ③ `S3_1` → 에이전시 「정보 제공」 → 계약 판단안: `unknowns` 에 G-02 가 있고 `status = FILLED_BY_MOCK`, 사실 「성과 피 조건」 라벨 `MOCK`, R-AUTH-02 `lowerBound = true` 그대로. 에이전시 「정보 부족」이면 G-02 `OPEN`(AC-3-02 그대로). ① 수령확인 뒤 계약 판단안의 G-03 = `FILLED_BY_MOCK`. `GET /api/data-registry` 의 같은 공백 상태와 일치 |
@@ -950,6 +1025,8 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ### 10-5. 프론트엔드 새 작업
 
+> **상태 (2026-11-14, 프론트엔드 4단계 보고)**: FE-15 · FE-16 · FE-17 **완료**(프론트엔드 보고 — `npm run check` 297 통과 · 4 건너뜀, 별도 사본 `next build` 통과. 기획은 `approvals/[id]/page.tsx` · `data/page.tsx` · `components/badges/values.tsx` 가 `FILLED_BY_MOCK` · `proposedSource` 를 쓰는 것만 확인). FE-16 (2) 의 표시 조건은 서버 값 `proposedSource = 'SUBMITTER'`(판단안 권고와 **다를 때만**)를 그대로 따른다.
+
 | ID | 화면 | 할 일 | 수용 기준 |
 |---|---|---|---|
 | **FE-15** (BE-21 뒤) | S-05 미확인 · 공백 구역, S-03 탭 3 판단안 요약 | `unknowns[].status` 가 `FILLED_BY_MOCK` 이면 `미확인` 칩 대신 `모의` 배지 + `statusText`. 문구는 서버 값(S-12 `GapStatusCell` 과 같은 표시) | A-33 변형 화면: 판단안 v2 의 미확인 목록에 G-02 가 "모의 회신으로 보완 — 원본 공백은 그대로"로 보이고, S-12 공백 탭과 문구가 같다. "해소" 문구 없음 |
@@ -958,5 +1035,62 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ### 10-6. 완료 조건 재판정
 
-점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-3단계-뒤). 요지: 5개 모두 **로컬 충족**(로컬 화면에서 증거 확인, 배포 주소 미확인). 「충족」으로 올리려면 **배포**(BE-14 — 사용자 결정 대기)와 배포 주소에서 ①~④ 1회 실행이 남았다. BE-21~24 · FE-15~17 은 표시 · 절차를 다듬는 작업으로, 완료 조건 판정을 막지 않는다(그 전에는 DEMO 0-6 진행표의 대체 단계로 시연한다).
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-4단계-뒤). 요지: 5개 모두 **로컬 충족**(로컬 화면에서 증거 확인, 배포 주소 미확인). 「충족」으로 올리려면 **배포**(BE-14 — 사용자 결정 대기)와 배포 주소에서 ①~④ 1회 실행이 남았다. BE-21~24 · FE-15~17 은 표시 · 절차를 다듬는 작업으로, 완료 조건 판정을 막지 않는다(그 전에는 DEMO 0-6 진행표의 대체 단계로 시연한다).
 
+## 11. 4단계 반영 · AI 실행 기록 · 배포 A안 · 후속 작업 (2026-11-14)
+
+기준: devlog LOG-028 ~ LOG-033 · DD-047 ~ DD-051, 코드 읽기(`app/src/domain/gaps.ts` · `types.ts` · `api-types.ts` · `workflow.ts` `completeTask`, `app/src/server/ai/recorded/` · `ai/agent.ts` · `ai/assessor.ts` · `scenarios.ts` · `service.ts` · `views/index.ts`, `app/src/app/api/assessments/recorded/route.ts`, `app/tests/api/be-21-24.test.ts` · `recorded-run.test.ts`). 기획이 직접 실행한 것: `npm run check`(2026-11-14 17:28, **통과** — 24 파일 · 1 건너뜀, 291 통과 · 2 건너뜀), `axhub deploy list`(읽기 전용 — 배포 이력 3건 확인) · `axhub env set --help`(옵션 확인). 배포 준비 구현 뒤 `npm run check` 재실행(17:39, **통과** — 26 파일 · 2 건너뜀, 297 통과 · 4 건너뜀). 화면 · docker 는 돌리지 않았다. axhub 전제(Dockerfile · DB · env)와 로컬 docker 결과는 백엔드 보고를 인용했다.
+
+### 11-1. 이번에 문서에 반영한 것
+
+| # | 항목 | 반영한 곳 |
+|---|---|---|
+| 1 | AI 방식 사용자 결정 (b) — 실제 실행 1회 + 기록 재생, 시연 런타임 모의 | 9-1(다시 씀) · 0 표기 · 1-3 Assessment · TECH_STACK 2-3 · 2-4 · DEMO 0-2 · 0-4 · 0-6 · SCREEN_SPEC 0-1 · S-05 · S-05R |
+| 2 | 심사 관점별 증거 표 · 실제 작동 / 모의 처리 / 설계 단계 구분표 · 한계 7건 | 9-1 |
+| 3 | BE-21 ~ 24 구현됨 · 타입 | 1-3 Assessment(`AssessmentUnknown` · `AiTurnTrace`) · 1-3 ApprovalRequest(`proposedSource`) · 3-4 · 10-4 · DEMO AC-3-09 ~ 11 · AC-4-06 · AC-4-06a |
+| 4 | 기록 재생 API · 타입 | 1-3 Assessment · SCREEN_SPEC 4절 |
+| 5 | 배포 A안 확정 · 구현(BE-14) · axhub 확인 사실 · 미확인 4건 · 실패 배포 이력 · `GET /api/healthz` | DEPLOY.md · TECH_STACK 4 · 5 · 5-1 · SCREEN_SPEC 4절 |
+
+### 11-2. BE-21~24 구현 대조
+
+| 작업 | 구현 (코드 위치) | 테스트 | 문서와의 차이 |
+|---|---|---|---|
+| BE-21 | `domain/gaps.ts`(`gapStatus` · `gapState` · `GAP_STATUS_TEXT`) 신설, `types.ts` `AssessmentUnknown`, `views/index.ts` 가 같은 함수를 다시 내보냄 | `be-21-24.test.ts` BE-21 5건(G-02 정보 제공 · 정보 부족, G-03 수령확인 전후, G-08 SCM 회신 전후, 시드 셋 다 `OPEN`) | 없음 |
+| BE-22 | `workflow.ts` `completeTask` `RESUBMIT` — 판단안 없으면 422 `INFO_MISSING`, 이전 권고 복사 삭제. `ApprovalView.proposedSource` · `assessmentDecisionText` | BE-22 5건 | **1건**: `SUBMITTER` 는 상신자 지정이 판단안 권고와 **다를 때만**. 같으면 `ASSESSMENT` + 이력 사유 "… 권고와 같음". 이전 문서(지정이면 `SUBMITTER`)를 **구현에 맞춰 고쳤다** — 화면 문구 "판단안 권고와 다름"이 거짓이 되지 않게(1-3 ApprovalRequest 3) |
+| BE-23 | 같은 함수 — 열린 `REVIEW_BEFORE_DEADLINE` 을 `CANCELLED`(`SYSTEM`/`SYSTEM`), 사유 "재상신 완료로 종료 — 재검토 결과는 재상신 요청 {ID} · 근거 판단안 {ID}". `registry.ts` A-35 문구 사본 갱신 | BE-23 5건(자동 종료 · 이미 `DONE` 이면 그대로 · 다시 반려되면 새 작업 · 승인조건 문서화는 닫히지 않고 7/17 뒤 OVERDUE · A-35 문구) | 없음 |
+| BE-24 | `scenarios.ts` `s4` — 7/20 09:00 이동 뒤 · 보충 초안 전에 PLAN-011 모의 판단안 기록. 점검 항목 **`AC-4-06a`** "PLAN-011 판단안 v1 · 권고 조건부"(기대 `[1, 'CONDITIONAL']`). `next` = "SCM 역할로 보충 검토 회신 → PLAN-011 판단안 다시 만들기(v2)" | BE-24 4건(v1 · 조건부 · 모의 · 초안보다 먼저, 점검 · 안내, ④-c 뒤 v2 부결, ④-b 뒤 v2 부결) | 점검 항목 ID 가 새로 생김(`AC-4-06a`) — DEMO ④ 수용 기준에 추가 |
+| AI 추적 | `Assessment.aiTrace`(`AiTurnTrace[]`), `agent.ts` 가 응답마다 1행. 실패 사유에 API 오류 종류만(안내 문구는 서버 로그, 키 모양 문자열은 가림) | `tests/unit/agent.test.ts` | 새 필드 — 1-3 Assessment 에 추가 |
+| 기록 재생 | `server/ai/recorded/index.ts`(`RECORDED_RUNS` · `verifyRecordedRun` · `recordedRunView`), `service.recordedRuns()`, route `GET /api/assessments/recorded` | `recorded-run.test.ts` 10건 | 새 API · 타입 — 9-1 · SCREEN_SPEC 4절 |
+
+### 11-3. 백엔드 작업
+
+| ID | 파일 | 할 일 | 수용 기준 |
+|---|---|---|---|
+| **BE-14** — **구현 · 로컬 docker 확인, 실배포 대기** (2026-11-14, 미커밋) | 최상위 `Dockerfile` · `.dockerignore` · `axhub.yaml` · `app/scripts/deploy/start.sh` · `bootstrap.ts` · `app/src/server/deploy/bootstrap.ts` · `app/src/app/api/healthz/route.ts` · `tests/api/healthz.test.ts` | 구현 내용은 [DEPLOY.md 2-3](DEPLOY.md#2-3-구성-저장소-파일-기준--2026-11-14-작업본)(기획이 파일을 읽어 옮김): 4단계 빌드 · `USER node` · `RAW_DATA_DIR=/data/raw` · CSV 17개만 · `root` 미선언 · port 3000 · `health_path /api/healthz`(DB 를 보지 않음) · `start_period 90s` · `database postgres` · `AOURA_AI_MODE` required · 시작 순서(마이그레이션 → 비어 있으면 SEED → 서버, 실패 시 종료 코드 1). **남은 일은 실배포뿐 — `git push origin` · `axhub env set` 은 사용자가 "배포"라고 한 뒤에만** | **로컬 docker 로 확인됨**(백엔드 보고 — 0.5코어 · 1GB · 새 DB, 기획 미재확인): 빌드 약 56초 · 기동 0.77초 · `healthz` 200 · `meta` = `MOCK` · `POSTGRES` · `FILES` · `S1_7` 리셋 뒤 점검 7/7 · `recorded` 200 · 원본 CSV · 내부 파일 HTTP 404 · 재시작 시 상태 유지. **실배포 뒤 확인(DEPLOY.md 4절 9번)**: ① `healthz` 200 ② `meta` 세 값 ③ `S1_7` 리셋 → 점검 7/7 ④ `recorded` 200 · `basisCheck.ok` ⑤ `/data/raw/…csv` 404. **미확인**: axhub 빌더 빌드(amd64) · 실제 트랜잭션 풀러 · 실환경 기동 시간 · `axhub deploy check` |
+| BE-15 | — | **실행됨** (2026-11-14 17:19 KST, 9-1). 추가 실행 없음 — 사용자 결정 (b) | — |
+| **BE-25** — **수정 중** (알려진 결함) | `server/ai/recorded/` (기록 읽는 방식) · `app/scripts/check-recorded-bundle.mjs` | 번들을 거친 서버(`next build` · docker · 배포)에서 기록 재생의 `basisCheck.ok` 가 `false` 로 나온다 — INF-001 의 ROAS 두 값이 부동소수 마지막 자리에서 다르다(백엔드 진단: 번들러가 JSON 모듈의 소수를 1ULP 다르게 읽음). 화면에 "현재 규칙 계산과 불일치" 빨간 경고. **기록 파일은 고치지 않는다. 비교를 느슨하게 해서(허용 오차) 덮지 않는다** — 원인이 "서버가 내보내는 기록이 파일 원문과 다르다"이므로, 기록을 원문 그대로 읽게 고친다. 화면에서 경고를 숨기지 않는다 | **AC-R-07**(DEMO 5-1): 번들 서버에서 응답의 기록 값이 파일 원문과 숫자까지 같고 `basisCheck.ok = true`. `next dev` · `next build` + `next start` · docker 이미지 세 곳에서 확인. 근거 값을 실제로 바꾸면 여전히 `ok = false` 가 나온다(기존 테스트 유지). 실배포 전에 끝낸다 — DEPLOY.md 배포 후 점검 4번이 이것을 본다 |
+| (기록, 작업 아님) | `server/ai/recorded/rec-001-contract.json` | **고치지 않는다.** 실제 AI 를 다시 실행하게 되면 그때만: 도구가 주는 비율 값(ROAS 등)의 표시 자릿수를 정해 문장에 16자리 소수가 인용되지 않게 한다(9-1 한계 5) | — |
+
+### 11-4. 프론트엔드 작업
+
+| ID | 화면 | 할 일 | 수용 기준 |
+|---|---|---|---|
+| **FE-18** — **완료** (프론트엔드 보고) | S-05R `/assessments/recorded` · S-05 · S-13 링크 · 사이드 메뉴 | 구현: 표지(남색 「실행 기록 · 재생」 + 서버 `label`, "지금 AI 를 호출하지 않음 · 운영 상태와 분리 · 실시간/모의와 다름") → 흐름 띠 5단계(① AI 가 받은 것 ② AI 가 낸 것 ③ 검증 ④ 승인요청 ⑤ 사람 회신) → 실행 개요 → 각 구역. 승인요청 · 이력은 「그 실행 당시의 사본」, 운영 화면 ID 링크 없음 | UI-11. 남은 것: 번들 서버의 `basisCheck` 불일치 경고(BE-25 — 백엔드 수정 중) |
+| FE-15 · 16 · 17 — **완료** | S-05 · S-06 · S-07 · S-13 · S-04 | 10-5 그대로 + S-04 에 건별 판단안 링크(표의 상태 칸 · 건 상세 서랍) 추가 | 10-5 |
+| **FE-19** — **완료** | 화면 미확인 4건 검증 | 네 건 모두 화면 조작으로 확인(결과는 DEMO 0-3) | — |
+| **FE-20** (새 작업, 낮음) | S-05R | 화면 ID 표시를 `S-05` 에서 **`S-05R`** 로(아래 11-6 ①). BE-25 수정 뒤 기록 화면의 「현재 규칙 계산과 일치」를 번들 서버(`next build` 사본)에서 다시 확인 | 화면 ID 가 `S-05R`. 번들 서버에서 빨간 경고가 없다 |
+
+### 11-6. 프론트엔드 4단계 — 판정 · 결정
+
+| # | 항목 | 결정 | 이유 |
+|---|---|---|---|
+| ① | 기록 재생 화면의 화면 ID (지금 `S-05`) | **별도 ID `S-05R` 을 준다** | S-05 는 운영 판단안(상태 버전 · 프리셋에 따라 바뀜, 쓰기 버튼 있음)이고 기록 재생은 운영 상태와 무관한 조회 전용 증거 화면이다. 같은 ID 면 수용 기준(UI-06 대 UI-11) · 시연 진행표에서 둘이 섞인다. `R` = Recorded |
+| ② | 사이드 메뉴 「AI 실행 기록」 (첫 명세는 "메뉴에 넣지 않는다") | **채택 — 문서를 구현에 맞춘다** | 심사자가 시연자 안내 없이도 실제 AI 증거를 찾을 수 있어야 한다. 조건: 운영 메뉴(전속계약 · 승인함 · 작업 …)와 구분된 자리(처리 이력 · 데이터 출처 · 시연 시나리오 쪽)에 두고, 메뉴 이름에 `실시간` 을 쓰지 않는다 |
+| ③ | 표지 문구 「실행 기록 · 재생」 · 구역 이름(AI 가 받은 것 · 낸 것 · 검증 · 승인요청 · 사람 회신) | **채택** | 명세의 「AI 입력 · AI 출력」보다 쉬운 말이고 뜻이 같다. 표시 규칙(9-1)은 그대로 지킨다 |
+| ④ | 기록 화면 아래의 일반 링크(시연 시나리오 · 승인함 · 처리 이력) | **허용** | 금지한 것은 기록 안의 ID(`ASM-001` · `APR-001`)를 운영 화면 링크로 만드는 것이다. "현재 요청은 승인함에서" 같은 일반 이동은 오히려 둘을 구분해 준다 |
+| ⑤ | **상신자 지정 결정을 화면에서 입력하게 할지** | **두지 않는다 — API 전용 유지** | (a) 시연 ①~④ 에 필요한 장면이 없다. (b) 화면 기본 경로는 "판단안을 다시 만든 뒤 재상신"이고, 다른 결정을 올리고 싶다는 것은 판단 근거가 바뀌었다는 뜻이라 판단안부터 다시 만드는 것이 맞다 — 근거 판단안과 요청 권고가 어긋나는 경로를 화면에 일부러 열 이유가 없다. (c) 결정은 어차피 권한자가 회신에서 고른다(S-06 [승인] + 결정 선택 — 권고와 다른 결정도 고를 수 있다). API 경로와 `SUBMITTER` 표시는 그대로 두고, 증거는 API 테스트다 |
+| ⑥ | 422 `INFO_MISSING`(판단안 없는 재상신)의 화면 재현 | **화면으로는 만들 수 없다 — 명시한다** | 프리셋 · API 경로에서는 첫 상신이 판단안에서 만들어지므로 재상신 시점에 계약 판단안이 항상 있다. 이 거부는 도메인 함수 직접 호출에서만 일어나고 증거는 `tests/api/be-21-24.test.ts` 다(1-3 ApprovalRequest 4). 시연에서 보이려고 판단안을 지우는 장치를 만들지 않는다 |
+
+### 11-5. 완료 조건 재판정
+
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-4단계-뒤). 요지: 5개 모두 **로컬 충족** 그대로다 — 4단계는 판정 단계를 올리지 않는다(배포 주소가 아직 없다). 달라진 것은 ① 다듬기 BE-21 ~ 24 가 끝나 조건 5 의 "알려진 차이 1건"이 **백엔드에서는** 없어졌고(화면 FE-15 는 진행 중) ② 여섯 관점 「AI · 사람 · 도구」에 실제 입력 · 출력 증거가 생겼으며 ③ 프론트엔드 4단계로 화면 미확인 4건이 모두 확인됐고 ④ 배포 방식이 A안으로 정해지고 구현 · 로컬 docker 확인까지 끝나, 남은 것이 "사용자 결정"에서 "`AOURA_AI_MODE` 등록 · 사용자의 배포 지시 · 실배포에서만 확인되는 미확인 4건"으로 바뀐 것이다. **알려진 결함 1건이 수정 중이다**(BE-25 — 번들 서버에서 기록 재생 `basisCheck` 불일치). 실배포 전에 고친다.

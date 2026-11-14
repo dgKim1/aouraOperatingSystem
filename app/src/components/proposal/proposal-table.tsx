@@ -26,7 +26,29 @@ export interface ApprovalRef {
   statusText: string;
 }
 
-export function ProposalTable({ lines, focusId, aiMode, approvals, actorRole }: { lines: LineView[]; focusId?: string | undefined; aiMode: 'LIVE' | 'MOCK'; approvals: Record<string, ApprovalRef>; actorRole: ActorRole }) {
+/** 건을 다룬 판단안 (최신 먼저) — 버전 · 건별 권고는 판단안 값 그대로 (FE-17) */
+export interface LineAssessmentRef {
+  id: string;
+  version: number;
+  mock: boolean;
+  decision: string | null;
+}
+
+export function ProposalTable({
+  lines,
+  focusId,
+  aiMode,
+  approvals,
+  assessments = {},
+  actorRole,
+}: {
+  lines: LineView[];
+  focusId?: string | undefined;
+  aiMode: 'LIVE' | 'MOCK';
+  approvals: Record<string, ApprovalRef>;
+  assessments?: Record<string, LineAssessmentRef[]>;
+  actorRole: ActorRole;
+}) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showRef, setShowRef] = useState(false);
   const [openId, setOpenId] = useState<string | null>(focusId && lines.some((l) => l.id === focusId) ? focusId : null);
@@ -177,6 +199,15 @@ export function ProposalTable({ lines, focusId, aiMode, approvals, actorRole }: 
                       권고 {decisionText(l.recommendation.decision)}
                     </div>
                   )}
+                  {assessments[l.id]?.[0] && (
+                    <div className="mt-1 text-[11px] text-zinc-700">
+                      판단안{' '}
+                      <Link href={`/assessments/${assessments[l.id]![0]!.id}`} className="font-mono underline">
+                        {assessments[l.id]![0]!.id}
+                      </Link>{' '}
+                      v{assessments[l.id]![0]!.version}
+                    </div>
+                  )}
                   {l.hasPostDeadlineReport && <div className="mt-1 text-[11px] text-red-800">사후 보고 작업</div>}
                 </td>
               </tr>
@@ -187,14 +218,14 @@ export function ProposalTable({ lines, focusId, aiMode, approvals, actorRole }: 
 
       <Sheet open={!!open} onOpenChange={(o) => !o && setOpenId(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-          {open && <LineDrawer l={open} />}
+          {open && <LineDrawer l={open} assessments={assessments[open.id] ?? []} />}
         </SheetContent>
       </Sheet>
     </div>
   );
 }
 
-function LineDrawer({ l }: { l: LineView }) {
+function LineDrawer({ l, assessments }: { l: LineView; assessments: LineAssessmentRef[] }) {
   return (
     <>
       <SheetHeader>
@@ -296,6 +327,27 @@ function LineDrawer({ l }: { l: LineView }) {
           </p>
           <p className="text-xs text-purple-900">기안 예상 GMV 는 쿠폰 · 반품 · 비용 차감 전 금액으로 승인 근거가 될 수 없습니다 (정책).</p>
         </ClaimsFold>
+
+        <div className="text-xs" data-testid="line-assessments">
+          <h4 className="mb-1 font-semibold">이 건의 판단안 ({assessments.length})</h4>
+          {assessments.length === 0 ? (
+            <p className="text-zinc-600">아직 없음 — 표에서 건을 선택해 [선택 건 판단안 만들기]</p>
+          ) : (
+            <ul className="space-y-0.5">
+              {assessments.map((a, i) => (
+                <li key={a.id} className="flex flex-wrap items-center gap-1.5">
+                  <Link href={`/assessments/${a.id}`} className="font-mono underline">
+                    {a.id}
+                  </Link>
+                  <span>v{a.version}</span>
+                  {a.decision && <span>· 이 건 권고 {decisionText(a.decision)}</span>}
+                  {a.mock && <span className="rounded border border-dashed border-zinc-500 px-1">모의</span>}
+                  {i === 0 && assessments.length > 1 && <span className="text-zinc-600">(최신)</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         <p className="text-xs">
           연결:{' '}

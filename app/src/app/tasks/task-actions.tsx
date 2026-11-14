@@ -7,6 +7,7 @@
  * SCM 보충 검토 · SCM 정보 요청 작업은 PATCH 완료가 409 라([완료] 없음, BE-18) [보충 검토 회신]으로만 닫는다.
  * 담당이 아닌 역할은 [권한 검증 확인]으로 같은 요청을 보내 서버의 422 문구를 그대로 볼 수 있다(상태 불변).
  */
+import Link from 'next/link';
 import { useState } from 'react';
 import type { TaskPatchResponse, TaskView } from '@/domain/api-types';
 import type { ActorRole } from '@/domain/types';
@@ -21,7 +22,15 @@ import { Textarea } from '@/components/ui/textarea';
 
 type Mode = null | 'done' | 'cancel' | 'scm' | 'agency';
 
-export function TaskActions({ task, role, roleLabel, assessments, today }: { task: TaskView; role: ActorRole; roleLabel: string; assessments: { id: string; text: string }[]; today: string }) {
+/** 재상신 근거 판단안 후보 — text = "ASM-003 · v2 · 권고 C 해지 통보" (판단안 값 그대로) */
+export interface ResubmitBasis {
+  id: string;
+  version: number;
+  mock: boolean;
+  text: string;
+}
+
+export function TaskActions({ task, role, roleLabel, assessments, today }: { task: TaskView; role: ActorRole; roleLabel: string; assessments: ResubmitBasis[]; today: string }) {
   const [mode, setMode] = useState<Mode>(null);
   const [note, setNote] = useState('');
   const [content, setContent] = useState('');
@@ -30,6 +39,7 @@ export function TaskActions({ task, role, roleLabel, assessments, today }: { tas
   const [err, setErr] = useState<string | null>(null);
   const act = useApiAction<TaskPatchResponse>();
   const probe = useApiAction<TaskPatchResponse>();
+  const picked = assessments.find((a) => a.id === asm) ?? null;
   const mine = task.ownerRole === role;
   const open = task.status === 'OPEN' || task.status === 'IN_PROGRESS' || task.status === 'OVERDUE';
   const scmReview = role === 'SCM' && task.ownerRole === 'SCM' && (task.type === 'REPLENISHMENT_REVIEW' || task.type === 'INFO_REQUEST');
@@ -133,15 +143,34 @@ export function TaskActions({ task, role, roleLabel, assessments, today }: { tas
                 재상신 근거 판단안
               </Label>
               {assessments.length ? (
-                <select id={`a-${task.id}`} className="block h-7 rounded border bg-white px-1 text-xs" value={asm} onChange={(e) => setAsm(e.target.value)}>
-                  {assessments.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.text}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <select id={`a-${task.id}`} className="block h-7 max-w-full rounded border bg-white px-1 text-xs" value={asm} onChange={(e) => setAsm(e.target.value)}>
+                    {assessments.map((a, i) => (
+                      <option key={a.id} value={a.id}>
+                        {a.text}
+                        {a.mock ? ' · 모의' : ''}
+                        {i === 0 ? ' (최신)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {picked && (
+                    <p className="mt-1 text-[11px] text-zinc-700" data-testid="resubmit-basis">
+                      근거 판단안{' '}
+                      <Link href={`/assessments/${picked.id}`} className="font-semibold underline">
+                        {picked.text}
+                      </Link>
+                      {picked.mock && <span className="ml-1 rounded border border-dashed border-zinc-500 px-1">모의</span>} — 이 판단안의 권고가 새 승인요청의 권고안이 됩니다.
+                    </p>
+                  )}
+                </>
               ) : (
-                <p className="text-[11px] text-amber-800">이 대상의 판단안이 없습니다 — 이전 요청의 권고로 재상신됩니다. 먼저 판단안을 다시 만들 수 있습니다.</p>
+                <p className="text-[11px] text-amber-900" role="note">
+                  이 대상의 판단안이 없습니다 — 판단안 없이 재상신하면 서버가 거부합니다(정보 부족, 상태 불변). 먼저{' '}
+                  <Link href={`${task.subjectHref}?tab=assessment`} className="font-semibold underline">
+                    전속계약 판단안 탭
+                  </Link>
+                  에서 판단안을 만드세요.
+                </p>
               )}
             </div>
           )}

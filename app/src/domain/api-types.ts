@@ -3,6 +3,7 @@
  * 프론트엔드는 이 파일을 import 해서 fetch('/api/…') 결과를 받는다 — app/src/app/_data/types.ts 를 대체한다.
  * 모든 값은 Sourced<T> 로 출처 · 스케일을 단다 (UI-01). 금액은 Money<'FULL'|'SAMPLE'> (R-SCALE-01 / UI-02).
  */
+import type { GapStatus } from './gaps';
 import type { ProvenanceResult } from './provenance';
 import type { Money, Num, Txt } from './sourced';
 import type {
@@ -63,6 +64,12 @@ export interface PresetInfo {
   description: string;
   /** 다음에 할 행동 안내 (S-13) */
   next: string;
+}
+
+// ───────── GET /api/healthz ─────────
+/** 배포 상태 확인 — 프로세스가 요청을 받는지만 알린다(DB · 원본 · AI 미확인). 동작 확인은 MetaView */
+export interface HealthView {
+  status: 'ok';
 }
 
 // ───────── GET /api/meta ─────────
@@ -477,6 +484,49 @@ export interface AssessmentView extends Assessment {
   approvalRequestIds: string[];
 }
 
+/**
+ * 기록된 실제 Claude 실행 (GET /api/assessments/recorded) — 시연에서 AI 를 다시 호출하지 않고 보여주는 재생.
+ * 화면은 `실시간` · `모의` 가 아닌 별도 표지(예 `기록`)와 label 문구를 그대로 보인다. 운영 판단안(AssessmentView)과 섞지 않는다.
+ */
+export interface RecordedAssessmentView extends Omit<AssessmentView, 'aiMode'> {
+  /** LIVE 가 아니다 — 그 실행은 실제 호출이었지만 지금 보이는 것은 기록의 재생 */
+  aiMode: 'RECORDED';
+}
+export interface RecordedRunView {
+  /** 기록 ID (REC-nnn) */
+  id: string;
+  aiMode: 'RECORDED';
+  /** 정직한 표시 문구 — "실제 Claude 실행 기록(YYYY-MM-DD HH:MM, 모델) — 재생, 지금 호출하지 않음" */
+  label: string;
+  /** 항상 false — 이 응답을 만들 때 AI 를 호출하지 않았다 */
+  calledNow: false;
+  /** 항상 false — 운영 상태(판단안 목록 · 승인함 · 처리 이력)에 들어 있지 않다 */
+  inOperationalState: false;
+  /** 실제 호출 시작 · 종료 (UTC ISO) */
+  executedAt: string;
+  finishedAt: string;
+  /** 실제 호출 시작 시각 KST 'YYYY-MM-DD HH:MM' */
+  executedAtKst: string;
+  /** 판단안 요청 1건의 실제 소요 시간(ms) = finishedAt − executedAt (도구 호출 왕복 포함) */
+  durationMs: number;
+  /** 도구 호출별 한 줄 요약 (호출 순서대로) — 상세 입력 · 출력은 assessment.toolCalls */
+  toolCallSummaries: { name: string; actor: 'AI' | 'SYSTEM'; summary: string }[];
+  model: string;
+  /** 그 실행에서 AI 가 받은 것 — 시스템 지시 · 사용자 요청 · 도구 정의 (키 · 헤더 없음) */
+  request: { sdk: string; thinking: string; effort: string; maxTokens: number; system: string; user: string; tools: { name: string; strict: boolean; description: string }[] };
+  /** 그 실행의 입력 상태 — 재생한 사건 순서 · 가상 기준시각 · 저장소 */
+  scenario: { steps: string[]; simNow: IsoDateTime; persistence: string; rawSource: string; invokedVia: string };
+  /** 그 실행이 만든 판단안 전체 (문장 · 권고 · facts · ruleResults · toolCalls 입력/출력 · stopReason · aiTrace · provenance) */
+  assessment: RecordedAssessmentView;
+  /** 그 실행에서 실제로 이어진 승인요청과 처리 이력 (사본 — 지금 운영 상태가 아님) */
+  followUp: { approvalRequests: ApprovalRequest[]; audit: AuditRowView[] };
+  /** 기록의 근거가 지금 도메인 계산(같은 입력)과 일치하는가. ok 가 false 면 화면에 불일치 경고를 보인다 */
+  basisCheck: { ok: boolean; replayedSteps: string; mismatches: string[] };
+}
+export interface RecordedRunsResponse {
+  runs: RecordedRunView[];
+}
+
 export interface AssessmentCreateBody {
   subjectType: SubjectType;
   subjectIds: string[];
@@ -504,6 +554,13 @@ export interface ApprovalView {
   daysLeft: number;
   level: DeadlineLevel;
   assessmentId: string | null;
+  /**
+   * 권고안의 출처 (BE-22). ASSESSMENT = 근거 판단안(규칙) 권고 그대로 · SUBMITTER = 상신자(계약 담당)가 판단안 권고와 다른 결정을 지정.
+   * SUBMITTER 이면 화면에 "상신자 지정 — 판단안 권고와 다름" 을 보인다 (FE-16). 지정 사실은 요청 생성 이력 사유에도 남는다
+   */
+  proposedSource: 'ASSESSMENT' | 'SUBMITTER';
+  /** 근거 판단안의 권고 결정 문구 (계약 요청만. 판단안이 없거나 권고 없음이면 null) — proposed 와 나란히 보여 차이를 드러낸다 */
+  assessmentDecisionText: string | null;
   supersededBy: string | null;
   alerts: AlertView[];
   replies: { id: string; respondentRole: ApproverRole; outcome: string; reason: string; simAt: IsoDateTime; label: 'MOCK' }[];
@@ -690,7 +747,7 @@ export interface AuditFilters {
   actorKind?: ActorKind;
 }
 
-export type GapStatus = 'OPEN' | 'FILLED_BY_MOCK';
+export type { GapStatus };
 
 export interface RegistryView {
   sources: { file: string; rows: number; scale: string; label: SourceLabel; usedIn: string }[];

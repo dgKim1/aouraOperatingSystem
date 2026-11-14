@@ -79,6 +79,26 @@ describe('Assessor — 실시간 결과 사용 · 모의 대체', () => {
     expect(JSON.stringify(d)).not.toContain('sk-ant');
   });
 
+  it('API 오류는 종류(status · type)만 사유에 남긴다 — 안내 문구 · 키는 저장하지 않음 (크레딧 부족 400 구분용)', async () => {
+    const err = Object.assign(new Error('400 {"type":"error"} sk-ant-secret'), { status: 400, type: 'invalid_request_error', apiMessage: 'Your credit balance is too low … sk-ant-secret' });
+    const d = await createAssessor(new FakeClient([err])).assess(basis, { createdAt: 'x' });
+    expect(d.aiMode).toBe('MOCK');
+    expect(d.fallbackReason).toBe('실시간 호출 실패 (Error 400 invalid_request_error)');
+    expect(JSON.stringify(d)).not.toMatch(/sk-ant|credit balance/);
+    expect(d.aiTrace).toBeUndefined();
+  });
+
+  it('실시간 판단안에는 응답별 추적(aiTrace: 메시지 ID · 응답 모델 · stop_reason · 토큰 수)이 붙는다', async () => {
+    const turn = (m: Message, id: string, i: number, o: number) => ({ ...m, id, usage: { input_tokens: i, output_tokens: o } }) as unknown as Message;
+    const c = new FakeClient([turn(msg('tool_use', [toolUse('t1', 'get_rule_results', {})]), 'msg_1', 100, 20), turn(msg('tool_use', [submit('자동 갱신을 막고 협상 여지를 남긴다.')]), 'msg_2', 300, 80)]);
+    const d = await createAssessor(c).assess(basis, { createdAt: 'x' });
+    expect(d.aiMode).toBe('LIVE');
+    expect(d.aiTrace).toEqual([
+      { messageId: 'msg_1', model: 'claude-opus-5-5', stopReason: 'tool_use', inputTokens: 100, outputTokens: 20 },
+      { messageId: 'msg_2', model: 'claude-opus-5-5', stopReason: 'tool_use', inputTokens: 300, outputTokens: 80 },
+    ]);
+  });
+
   it('출처 없는 숫자 · 예상 GMV 를 쓰면 모의로 대체 (AC-1-05)', async () => {
     const a = createAssessor(new FakeClient([msg('tool_use', [submit('조건변경으로 연 5억원 절감 예상.')])]));
     const d = await a.assess(basis, { createdAt: 'x' });

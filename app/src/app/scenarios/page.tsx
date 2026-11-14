@@ -1,5 +1,7 @@
 /** S-13 시연 시나리오 — ①~④ 를 같은 결과로 재현. 프리셋 = 초기화 후 시작 지점까지 서버에서 재생 (POST /api/scenarios/:id/reset) */
 import { CheckCircle2, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import { RecordedMark } from '@/components/assessment/parts';
 import { PageHeader, Section } from '@/components/common';
 import { getMeta, getPresets, getScenarioCheck } from '../_data/views';
 import { PresetButton } from './preset-button';
@@ -59,6 +61,14 @@ export default async function ScenariosPage() {
           <p className="text-sm text-muted-foreground">재생한 프리셋이 없습니다.</p>
         )}
       </Section>
+
+      <p className="flex flex-wrap items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+        <RecordedMark />
+        <Link href="/assessments/recorded" className="font-medium underline">
+          실제 Claude 실행 기록 보기
+        </Link>
+        <span className="text-xs text-zinc-700">— AI 가 받은 입력 · 낸 출력 · 검증 · 이어진 승인요청. 시연의 판단안은 모의이고, 이 기록은 다시 호출하지 않고 보여주기만 합니다.</span>
+      </p>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {GROUPS.map((g) => (

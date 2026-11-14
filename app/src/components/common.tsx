@@ -111,12 +111,13 @@ export function FlagChip({ flag }: { flag: LineFlag }) {
 const ACTOR_KIND_KO = { AI: 'AI', HUMAN: '사람', SYSTEM: '시스템', MOCK: '모의' } as const;
 
 /** 처리 이력 표 — 상태 문구 · 한 줄 설명은 서버의 fromText · toText · displayText 를 그대로 쓴다(사유 문자열을 해석하지 않음) */
-export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: { rows: AuditRowView[]; empty?: string }) {
+/** copy = 사본 표시(실행 기록 재생) — 대상 · 사건을 현재 운영 화면으로 연결하지 않는다(같은 ID 가 지금은 다른 것을 가리킬 수 있음) */
+export function AuditTable({ rows, empty = '처리 이력이 없습니다.', copy = false }: { rows: AuditRowView[]; empty?: string; copy?: boolean }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <caption className="sr-only">처리 이력</caption>
+        <caption className="sr-only">{copy ? '처리 이력 사본 — 그 실행 당시' : '처리 이력'}</caption>
         <thead className="text-left text-xs text-zinc-600">
           <tr className="border-b">
             <th className="py-1 pr-3 font-medium">시각 (가상 · 실제)</th>
@@ -138,7 +139,7 @@ export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: {
                 </div>
               </td>
               <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
-                <span className="text-muted-foreground">{r.entityType}</span> <AuditEntityLink type={r.entityType} id={r.entityId} />
+                <span className="text-muted-foreground">{r.entityType}</span> {copy ? <span className="font-mono">{r.entityId}</span> : <AuditEntityLink type={r.entityType} id={r.entityId} />}
               </td>
               <td className="py-1.5 pr-3 text-xs">
                 <span className="whitespace-nowrap">
@@ -155,7 +156,9 @@ export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: {
               </td>
               <td className="py-1.5 pr-3 font-mono text-[11px] whitespace-nowrap">{r.ruleIds.join(' ')}</td>
               <td className="py-1.5 pr-3 font-mono text-[11px] whitespace-nowrap">
-                {r.eventId ? (
+                {r.eventId && copy ? (
+                  r.eventId
+                ) : r.eventId ? (
                   <Link href={`/history?eventId=${r.eventId}`} className="underline">
                     {r.eventId}
                   </Link>

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MOCK_REPLIES } from '@/domain/mockReplies';
 import * as wf from '@/domain/workflow';
 import type { AuditLogEntry } from '@/domain/types';
+import { recordMockAssessment } from '@/server/scenarios';
 import { at, ds, line, tasksOf, toS1_4, toS1_5 } from '../helpers/scenario';
 
 /** 한 엔티티 이력의 연속성: 모든 행의 fromStatus = 직전 행 toStatus */
@@ -94,7 +95,8 @@ describe('BE-05 모의 회신은 요청 번호가 아니라 대상 · 상태로 
     let s = wf.advanceClock(toS1_4(), at('2026-07-10', '14:00')).state;
     s = wf.replyToApproval(s, ds, MOCK_REPLIES.S3_1_REJECT).state;
     s = wf.recordCounterpartyReply(wf.advanceClock(s, at('2026-07-13', '16:00')).state, MOCK_REPLIES.S3_2_AGENCY_INSUFFICIENT).state;
-    s = wf.completeTask(wf.advanceClock(s, at('2026-07-14', '10:00')).state, ds, tasksOf(s, 'RESUBMIT')[0]!.id, { payload: { proposedDecision: 'TERMINATE' } }).state;
+    s = recordMockAssessment(wf.advanceClock(s, at('2026-07-14', '10:00')).state, ds, { subjectType: 'CONTRACT', subjectIds: ['CTR-INF-001-2026'] }).state; // BE-22: 재상신 근거 판단안
+    s = wf.completeTask(s, ds, tasksOf(s, 'RESUBMIT')[0]!.id, { payload: { proposedDecision: 'TERMINATE' } }).state;
     s = wf.replyToApproval(wf.advanceClock(s, at('2026-07-15', '10:00')).state, ds, MOCK_REPLIES.S3_3_APPROVE_TERMINATE).state;
     expect(s.contract).toMatchObject({ status: 'NOTICE_PENDING', decision: 'TERMINATE' });
   });

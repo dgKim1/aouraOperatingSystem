@@ -16,6 +16,7 @@ import type { MasilDataset } from './dataset';
 import { daysLeft, deadlineLevel, decisionNeededBy } from './deadline';
 import { DomainError } from './errors';
 import { DOC_FILES } from './files';
+import { gapState } from './gaps';
 import { inventoryGate } from './inventory';
 import { decisionText, LINE_STATUS_KO, CONTRACT_STATUS_KO } from './labels';
 import { penalty, renewalTerm } from './penalty';
@@ -28,6 +29,7 @@ import type {
   ApproverRole,
   AssessmentFact,
   AssessmentRuleResult,
+  AssessmentUnknown,
   CampaignPerformance,
   Sourced,
   SourceRef,
@@ -55,14 +57,16 @@ export interface AssessmentBasis extends AssessmentSubject {
   allowedAlternativeIds: string[];
   proposedDecisions: { itemId: string; decision: string; condition?: string }[];
   claimsCited: { text: string; ref: SourceRef }[];
-  unknowns: { gapId: string; impact: string }[];
+  /** 미확인 · 공백 — 모의 회신으로 채워진 공백도 빼지 않고 상태(FILLED_BY_MOCK)를 단다 (BE-21) */
+  unknowns: AssessmentUnknown[];
   /** 모의 모드 문장 (결정적) */
   mockNarrative: Narrative;
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const pct = (x: number) => `${(x * 100).toFixed(2)}%`;
-const gap = (id: string, impact?: string) => ({ gapId: id, impact: impact ?? GAPS.find((g) => g.id === id)?.handling ?? '' });
+/** 미확인 항목 — 공백 상태는 S-12 와 같은 함수(domain/gaps.ts)로 판정한다 */
+const gap = (s: WorldState, id: string, impact?: string): AssessmentUnknown => ({ gapId: id, impact: impact ?? GAPS.find((g) => g.id === id)?.handling ?? '', ...gapState(s, id) });
 
 // 성과 계산 캐시 (원본은 바뀌지 않는다)
 const perfCache = new WeakMap<MasilDataset, { campaign: Record<string, CampaignPerformance>; influencer: Record<string, CampaignPerformance> }>();
@@ -212,7 +216,8 @@ function contractBasis(s: WorldState, ds: MasilDataset, ids: string[]): Partial0
     scm: '해당 없음 — 계약 판단은 재고에 직접 영향 없음.',
   };
 
-  const unknownIds = ['G-01', ...(c.performanceFeeTerms === null ? ['G-02'] : []), ...(s.receipts.length === 0 ? ['G-03'] : []), 'G-04', 'G-09'];
+  // 모의 회신으로 채워진 G-02 · G-03 도 목록에서 빼지 않는다 — 원본 공백은 그대로 (A-33, BE-21)
+  const unknownIds = ['G-01', 'G-02', 'G-03', 'G-04', 'G-09'];
   return {
     subjectType: 'CONTRACT',
     subjectIds: [c.id],
@@ -222,7 +227,7 @@ function contractBasis(s: WorldState, ds: MasilDataset, ids: string[]): Partial0
     allowedAlternativeIds: allowed,
     proposedDecisions: rec.alternativeId === 'NONE' ? [] : [{ itemId: c.id, decision: alternatives.find((a) => a.id === rec.alternativeId)!.decision }],
     claimsCited: [CLAIMS[1]!, CLAIMS[2]!, CLAIMS[0]!],
-    unknowns: unknownIds.map((g) => gap(g, g === 'G-02' && infoMissing ? '성과 피 정보가 기한 전에 오지 않음 — 총 보수는 하한만 확정' : undefined)),
+    unknowns: unknownIds.map((g) => gap(s, g, g === 'G-02' && infoMissing ? '성과 피 정보가 기한 전에 오지 않음 — 총 보수는 하한만 확정' : undefined)),
     mockNarrative: { recommendation: rec, perspectives },
   };
 }
@@ -328,9 +333,9 @@ function linesBasis(s: WorldState, ds: MasilDataset, ids: string[]): Partial0 {
   const claims = lines.map((l) => ({ text: `${l.id} 기안 예상 GMV ${fmt(l.expectedGmvKrw)}원 — 주장, 승인 근거 불가 (R-CLAIM-01)`, ref: planRef('expected_gmv_krw', l.id)[0]! }));
   if (linked.length) claims.push(CLAIMS[2]!);
   const unknowns = [
-    ...(lines.some((l) => l.flags.includes('SETTLEMENT_BEFORE_DEADLINE')) ? [gap('G-11', '집행일 < 확정기한 건은 결정 필요 시점을 앞당겨 표시 (A-26)')] : []),
-    ...(gated.length || lines.some((l) => l.flags.includes('INVENTORY_BELOW_MIN')) ? [gap('G-08'), gap('G-13')] : []),
-    gap('G-07', '공헌이익에 물류 추가비용 · CS 비용 미포함 (원본 없음)'),
+    ...(lines.some((l) => l.flags.includes('SETTLEMENT_BEFORE_DEADLINE')) ? [gap(s, 'G-11', '집행일 < 확정기한 건은 결정 필요 시점을 앞당겨 표시 (A-26)')] : []),
+    ...(gated.length || lines.some((l) => l.flags.includes('INVENTORY_BELOW_MIN')) ? [gap(s, 'G-08'), gap(s, 'G-13')] : []),
+    gap(s, 'G-07', '공헌이익에 물류 추가비용 · CS 비용 미포함 (원본 없음)'),
   ];
   return {
     subjectType: 'EXPANSION_LINES',
@@ -392,7 +397,7 @@ function replenishmentBasis(s: WorldState, ds: MasilDataset, ids: string[]): Par
     allowedAlternativeIds: ['A', 'B', 'NONE'],
     proposedDecisions: [],
     claimsCited: [],
-    unknowns: [gap('G-08'), gap('G-12'), gap('G-13')],
+    unknowns: [gap(s, 'G-08'), gap(s, 'G-12'), gap(s, 'G-13')],
     mockNarrative: {
       recommendation: { alternativeId: 'NONE', rationale: 'SCM 회신(G-08: 기발주 포함 여부 · 입고일) 전에는 권고하지 않음 — 회신이 집행일과 승인 경로를 바꾼다.' },
       perspectives: {

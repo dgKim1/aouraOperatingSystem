@@ -25,6 +25,7 @@ import type {
   ProposalFilters,
   ProposalView,
   ReceivableView,
+  RecordedRunsResponse,
   RegistryView,
   ScenarioCheckView,
   TaskView,
@@ -106,6 +107,11 @@ export function getAssessment(id: string): Promise<AssessmentView | null> {
 /** GET /api/assessments?subjectId= */
 export function getAssessments(subjectId?: string): Promise<AssessmentView[]> {
   return getService().assessments(subjectId ? { subjectId } : {});
+}
+
+/** GET /api/assessments/recorded — 기록된 실제 Claude 실행의 재생. AI 를 호출하지 않고 운영 상태도 읽거나 바꾸지 않는다 */
+export function getRecordedRuns(): Promise<RecordedRunsResponse> {
+  return getService().recordedRuns();
 }
 
 /** GET /api/approval-requests?role=&status= */

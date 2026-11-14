@@ -6,19 +6,22 @@ import type { TaskView } from '@/domain/api-types';
 import type { ActorRole } from '@/domain/types';
 import { cn } from '@/lib/utils';
 import { getAssessments, getInventory, getMeta, getSession, getTasks } from '../_data/views';
-import { TaskActions } from './task-actions';
+import { TaskActions, type ResubmitBasis } from './task-actions';
 import { ReplenishmentList } from '../analysis/inventory/replenishment-list';
 
 export default async function TasksPage() {
   const [tasks, { role }, meta, assessments, inv] = await Promise.all([getTasks(), getSession(), getMeta(), getAssessments(), getInventory()]);
   const open = tasks.filter((t) => t.status !== 'DONE' && t.status !== 'CANCELLED');
   const done = tasks.filter((t) => t.status === 'DONE' || t.status === 'CANCELLED');
-  // 재상신 작업의 판단안 후보: 같은 대상을 다룬 판단안 (최신 먼저)
-  const asmFor = (subjectId: string) =>
+  // 재상신 작업의 근거 판단안 후보: 같은 대상을 다룬 판단안 (최신 먼저 — 기본 선택 = 최신). 버전 · 권고는 판단안 값 그대로 (FE-16)
+  const asmFor = (subjectId: string): ResubmitBasis[] =>
     assessments
       .filter((a) => a.subjectIds.includes(subjectId))
       .reverse()
-      .map((a) => ({ id: a.id, text: `${a.id} v${a.version} · 권고 ${a.recommendation.alternativeId}${a.mock ? ' · 모의' : ''}` }));
+      .map((a) => {
+        const title = a.alternatives.find((x) => x.id === a.recommendation.alternativeId)?.title ?? '';
+        return { id: a.id, version: a.version, mock: a.mock, text: `${a.id} · v${a.version} · 권고 ${a.recommendation.alternativeId}${title ? ` ${title}` : ''}` };
+      });
   const mineOpen = open.filter((t) => t.ownerRole === role.actorRole).length;
   return (
     <div className="space-y-4">
@@ -38,7 +41,7 @@ export default async function TasksPage() {
   );
 }
 
-function TaskTable({ rows, role, roleLabel, asmFor, today, closed = false }: { rows: TaskView[]; role: ActorRole; roleLabel: string; asmFor: (id: string) => { id: string; text: string }[]; today: string; closed?: boolean }) {
+function TaskTable({ rows, role, roleLabel, asmFor, today, closed = false }: { rows: TaskView[]; role: ActorRole; roleLabel: string; asmFor: (id: string) => ResubmitBasis[]; today: string; closed?: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[1000px] text-sm">

@@ -14,6 +14,7 @@ import type {
   MetaView,
   MutationResult,
   PresetId,
+  RecordedRunsResponse,
   ProposalFilters,
   ReplenishmentCreateResponse,
   ReplyBody,
@@ -32,6 +33,7 @@ import type { ActorRole, ApproverRole, ContractDecision, CounterpartyReplyInput,
 import * as wf from '@/domain/workflow';
 import { MODEL } from './ai/client';
 import type { Assessor } from './ai/assessor';
+import { RECORDED_RUNS, recordedRunView } from './ai/recorded';
 import { buildPreset, checkScenario, CONTRACT_ID, isPresetId, presetInfo, PRESETS, settle } from './scenarios';
 import type { WorldStore } from './store/types';
 import * as V from './views';
@@ -217,6 +219,11 @@ export class AouraService {
     const a = s.assessments.find((x) => x.id === id);
     if (!a) throw new DomainError('NOT_FOUND', `판단안 없음: ${id}`);
     return V.assessmentView(s, a);
+  }
+  /** 기록된 실제 실행 재생 — AI 호출 없음, 운영 상태를 읽거나 바꾸지 않음 (원본 데이터셋으로 근거 대조만) */
+  async recordedRuns(): Promise<RecordedRunsResponse> {
+    const { dataset } = await this.ds();
+    return { runs: RECORDED_RUNS.map((r) => recordedRunView(r, dataset)) };
   }
   async assessments(f: { subjectId?: string } = {}) {
     const { s } = await this.read();

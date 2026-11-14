@@ -2,7 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import * as wf from '@/domain/workflow';
 import { MOCK_REPLIES, MOCK_REPLY_DATASET } from '@/domain/mockReplies';
+import { recordMockAssessment } from '@/server/scenarios';
 import { at, ds, tasksOf, toS1_4 } from '../helpers/scenario';
+
+const CONTRACT = { subjectType: 'CONTRACT' as const, subjectIds: ['CTR-INF-001-2026'] };
 
 function rejected() {
   const s = wf.advanceClock(toS1_4(), at('2026-07-10', '14:00')).state;
@@ -36,16 +39,19 @@ describe('③ 정보 부족 · 거절', () => {
   // 주: DEMO_SCENARIOS 의 'APR-005' 는 ① → ② 연속 진행 시 번호. ③ 프리셋(① S1-4 까지만 재생)에서는 APR-004 가 된다 — 의미(v2 · supersedes)로 검증
   it('AC-3-03 재상신 → 새 요청 version 2, supersedes APR-001 (REJECTED 는 그대로 + 링크)', () => {
     let s = wf.advanceClock(rejected().state, at('2026-07-14', '10:00')).state;
+    // BE-22: 근거 판단안 없이는 재상신할 수 없다 — 재상신 전에 판단안을 기록한다
+    s = recordMockAssessment(s, ds, CONTRACT).state;
     s = wf.completeTask(s, ds, tasksOf(s, 'RESUBMIT')[0]!.id, { resultNote: '해지 통보안으로 재상신', payload: { proposedDecision: 'TERMINATE' } }).state;
     const apr5 = s.approvals.at(-1)!;
     expect(apr5.id).toBe('APR-004');
-    expect(apr5).toMatchObject({ version: 2, supersedesId: 'APR-001', requiredRole: 'GROUP_CEO_BOARD', status: 'PENDING' });
+    expect(apr5).toMatchObject({ version: 2, supersedesId: 'APR-001', requiredRole: 'GROUP_CEO_BOARD', status: 'PENDING', assessmentId: 'ASM-001' });
     expect(s.approvals.find((a) => a.id === 'APR-001')!.status).toBe('REJECTED');
     expect(s.contract.status).toBe('PENDING_APPROVAL');
   });
 
   function branchA() {
     let s = wf.advanceClock(rejected().state, at('2026-07-14', '10:00')).state;
+    s = recordMockAssessment(s, ds, CONTRACT).state;
     s = wf.completeTask(s, ds, tasksOf(s, 'RESUBMIT')[0]!.id, { payload: { proposedDecision: 'TERMINATE' } }).state;
     s = wf.advanceClock(s, at('2026-07-15', '10:00')).state;
     s = wf.replyToApproval(s, ds, { ...MOCK_REPLIES.S3_3_APPROVE_TERMINATE, requestId: s.approvals.at(-1)!.id }).state;

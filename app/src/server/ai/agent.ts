@@ -6,12 +6,12 @@
  */
 import type { AssessmentBasis, Narrative } from '@/domain/assessment';
 import { factValues } from '@/domain/assessment';
-import type { ToolCallLog } from '@/domain/types';
+import type { AiTurnTrace, ToolCallLog } from '@/domain/types';
 import { MODEL, type Message, type MessageParam, type MessagesClient, type Tool, type ToolResultBlockParam } from './client';
 
 export type AgentOutcome =
-  | { ok: true; narrative: Narrative; toolCalls: ToolCallLog[]; stopReason: string | null }
-  | { ok: false; reason: string; refusal: boolean; toolCalls: ToolCallLog[]; stopReason: string | null };
+  | { ok: true; narrative: Narrative; toolCalls: ToolCallLog[]; stopReason: string | null; trace: AiTurnTrace[] }
+  | { ok: false; reason: string; refusal: boolean; toolCalls: ToolCallLog[]; stopReason: string | null; trace: AiTurnTrace[] };
 
 export interface AgentOptions {
   effort?: 'low' | 'medium' | 'high';
@@ -94,7 +94,7 @@ export const SYSTEM_PROMPT = [
   '먼저 도구로 사실 · 규칙 결과 · 대안 · 공백을 읽고, 마지막에 submit_assessment 를 한 번 호출해 한국어로 제출한다.',
 ].join('\n');
 
-function userPrompt(basis: AssessmentBasis): string {
+export function userPrompt(basis: AssessmentBasis): string {
   const subject = basis.subjectType === 'CONTRACT' ? '전속계약' : basis.subjectType === 'EXPANSION_LINES' ? '확대 기안 건' : '재고 보충요청';
   return `판단 대상: ${subject} ${basis.subjectIds.join(', ')}. 도구로 근거를 확인한 뒤 판단안(권고 대안 · 권고 이유 · 마케팅/재무/계약/SCM 관점 근거)을 submit_assessment 로 제출하라.`;
 }
@@ -114,6 +114,7 @@ export async function runAssessmentAgent(basis: AssessmentBasis, client: Message
   const tools = agentTools(basis);
   const messages: MessageParam[] = [{ role: 'user', content: userPrompt(basis) }];
   const toolCalls: ToolCallLog[] = [];
+  const trace: AiTurnTrace[] = [];
   let nudged = false;
   let stopReason: string | null = null;
   for (let turn = 0; turn < (opts.maxTurns ?? 8); turn++) {
@@ -131,18 +132,23 @@ export async function runAssessmentAgent(basis: AssessmentBasis, client: Message
     } catch (e) {
       // 키 · 네트워크 · 한도 오류 — 원문(키 포함 가능성)은 남기지 않고 종류만
       const kind = e instanceof Error ? e.constructor.name : 'Error';
-      const status = (e as { status?: number })?.status;
-      return { ok: false, reason: `실시간 호출 실패 (${kind}${status ? ` ${status}` : ''})`, refusal: false, toolCalls, stopReason };
+      const err = e as { status?: number; type?: string | null; errorCode?: string | null; apiMessage?: string | null };
+      // 원인 구분용(크레딧 부족 · 잘못된 요청 · 인증)으로 API 오류 종류만 사유에 넣는다. 안내 문구는 서버 로그에만, 키 모양 문자열은 가린다
+      const type = typeof err.type === 'string' ? err.type : null;
+      const code = typeof err.errorCode === 'string' ? err.errorCode : null;
+      if (typeof err.apiMessage === 'string') console.warn('[ai] 실시간 호출 실패', err.status ?? '', type ?? '', err.apiMessage.replace(/sk-[A-Za-z0-9_-]+/g, '[가림]').slice(0, 200));
+      return { ok: false, reason: `실시간 호출 실패 (${[kind, err.status, type, code].filter((x) => x !== null && x !== undefined && x !== '').join(' ')})`, refusal: false, toolCalls, stopReason, trace };
     }
     stopReason = res.stop_reason;
-    if (res.stop_reason === 'refusal') return { ok: false, reason: 'AI 가 판단안 작성을 거절했습니다 (refusal)', refusal: true, toolCalls, stopReason };
+    trace.push({ messageId: res.id, model: res.model, stopReason: res.stop_reason, inputTokens: res.usage?.input_tokens ?? null, outputTokens: res.usage?.output_tokens ?? null });
+    if (res.stop_reason === 'refusal') return { ok: false, reason: 'AI 가 판단안 작성을 거절했습니다 (refusal)', refusal: true, toolCalls, stopReason, trace };
     const uses = res.content.filter((b): b is Extract<typeof b, { type: 'tool_use' }> => b.type === 'tool_use');
     const submit = uses.find((u) => u.name === 'submit_assessment');
     if (submit) {
       toolCalls.push({ name: submit.name, input: submit.input, output: null, actor: 'AI' });
       const narrative = parseSubmit(basis, submit.input);
-      if (!narrative) return { ok: false, reason: 'submit_assessment 입력이 스키마와 맞지 않음', refusal: false, toolCalls, stopReason };
-      return { ok: true, narrative, toolCalls, stopReason };
+      if (!narrative) return { ok: false, reason: 'submit_assessment 입력이 스키마와 맞지 않음', refusal: false, toolCalls, stopReason, trace };
+      return { ok: true, narrative, toolCalls, stopReason, trace };
     }
     if (res.stop_reason === 'pause_turn') {
       messages.push({ role: 'assistant', content: res.content });
@@ -164,7 +170,7 @@ export async function runAssessmentAgent(basis: AssessmentBasis, client: Message
       messages.push({ role: 'user', content: 'submit_assessment 도구로 판단안을 제출하라.' });
       continue;
     }
-    return { ok: false, reason: `판단안 제출 없이 종료 (stop_reason=${res.stop_reason})`, refusal: false, toolCalls, stopReason };
+    return { ok: false, reason: `판단안 제출 없이 종료 (stop_reason=${res.stop_reason})`, refusal: false, toolCalls, stopReason, trace };
   }
-  return { ok: false, reason: '도구 호출 횟수 한도 초과', refusal: false, toolCalls, stopReason };
+  return { ok: false, reason: '도구 호출 횟수 한도 초과', refusal: false, toolCalls, stopReason, trace };
 }

@@ -2,7 +2,22 @@ version: axhub/v1
 name: aoura-os
 metadata:
   name: Aoura 운영 시스템
-  description: AX 인재전쟁 배포 테스트 앱
+  description: AX 인재전쟁 W02 운영 시스템
+# root 는 선언하지 않는다 — 선언하면 빌드 컨텍스트가 그 폴더로 좁아지고 최상위 Dockerfile 이 무시돼 원본 CSV 를 이미지에 넣을 수 없다
 build:
-  deploy_method: static
-  static_output_dir: app
+  deploy_method: docker        # 앱에 기록된 값(docker)과 같아야 한다 — 다르면 resolve.spec_invalid
+  dockerfile: Dockerfile       # 저장소 최상위
+runtime:
+  port: 3000
+  health_path: /api/healthz    # 로그인 · DB 없이 200
+  healthcheck:
+    start_period: 90s          # 시작 시 마이그레이션 · 시드 + Next 기동 (기본 60초, 기본 사양 0.5코어)
+database:
+  engine: postgres             # 배포 때 앱 전용 DB 생성, 런타임에 DATABASE_URL · DIRECT_DATABASE_URL 주입
+env:
+  required:
+    - name: AOURA_AI_MODE      # 값 mock — 비밀값 아님. 등록돼 있지 않으면 배포가 시작 전에 멈춘다
+      scope: runtime
+  optional:
+    - name: ANTHROPIC_API_KEY  # secret · runtime 으로 등록됨. mock 모드에서는 쓰지 않는다
+      scope: runtime

@@ -259,7 +259,7 @@ class Tx {
     return task;
   }
 
-  addApproval(a: Omit<ApprovalRequest, 'id' | 'status'>): ApprovalRequest {
+  addApproval(a: Omit<ApprovalRequest, 'id' | 'status'>, note?: string): ApprovalRequest {
     const req: ApprovalRequest = { ...a, id: this.nextId('APR'), status: 'PENDING' };
     this.s.approvals.push(req);
     this.createdApprovals.push(req);
@@ -271,7 +271,7 @@ class Tx {
       actorRole: 'SYSTEM',
       actorKind: 'SYSTEM',
       ruleIds: [...new Set(req.routingReasons.map((r) => r.ruleId))],
-      reason: `승인요청 생성 → ${req.requiredRole}`,
+      reason: `승인요청 생성 → ${req.requiredRole}${note ? ` · ${note}` : ''}`,
       snapshot: { subjectIds: req.subjectIds, proposed: req.proposed, version: req.version, supersedesId: req.supersedesId },
     });
     return req;
@@ -796,29 +796,51 @@ export function completeTask(s: WorldState, ds: MasilDataset, taskId: string, in
     const asm = asmId !== undefined ? tx.s.assessments.find((a) => a.id === asmId) : [...tx.s.assessments].reverse().find((a) => a.subjectType === 'CONTRACT');
     if (asmId !== undefined && !asm) throw new DomainError('NOT_FOUND', `판단안 없음: ${asmId}`);
     if (asm && asm.subjectType !== 'CONTRACT') throw new DomainError('VALIDATION', `${asm.id} 은(는) 계약 판단안이 아님 — 재상신 근거로 쓸 수 없음`, { field: 'payload.assessmentId' });
-    const asmDecision = asm?.alternatives.find((x) => x.id === asm.recommendation.alternativeId)?.decision;
-    // 권고 결정 우선순위: ① 사람이 직접 지정 ② 근거 판단안의 권고 ③ (판단안이 없을 때만) 이전 요청의 권고안 유지
+    // BE-22: 계약 판단안이 하나도 없으면 재상신하지 않는다 — 근거 없이, 그것도 반려된 권고를 그대로 실어 올리는 경로를 두지 않는다 (ONTOLOGY 1-3 ApprovalRequest 4)
+    if (!asm) throw new DomainError('INFO_MISSING', '근거 판단안이 없습니다 — 판단안을 만든 뒤 재상신하세요', { field: 'payload.assessmentId' });
+    const asmDecision = asm.alternatives.find((x) => x.id === asm.recommendation.alternativeId)?.decision;
+    // 권고 결정: ① 상신자(계약 담당)가 직접 지정 ② 근거 판단안의 권고. 이전 요청의 권고는 복사하지 않는다
     const explicit = input.payload?.proposedDecision as string | undefined;
-    const proposedDecision = (explicit ?? asmDecision ?? prev.proposed[0]?.decision) as ContractDecision | undefined;
+    const proposedDecision = (explicit ?? asmDecision) as ContractDecision | undefined;
     if (!proposedDecision || !CONTRACT_DECISION_SET.includes(proposedDecision)) {
-      throw new DomainError('VALIDATION', `재상신할 계약 결정이 없음 (${explicit ?? asm?.recommendation.alternativeId ?? '판단안 없음'})`, { field: 'payload.proposedDecision' });
+      throw new DomainError('VALIDATION', `재상신할 계약 결정이 없음 (${explicit ?? asm.recommendation.alternativeId})`, { field: 'payload.proposedDecision' });
     }
+    // 상신자 지정은 숨기지 않는다 — 판단안 권고와 다르면 proposedSource = SUBMITTER, 같아도 지정 사실은 이력 사유에 남긴다
+    const asmContractDecision = asmDecision && CONTRACT_DECISION_SET.includes(asmDecision) ? asmDecision : null;
+    const differs = explicit !== undefined && explicit !== asmContractDecision;
+    const submitterNote =
+      explicit === undefined
+        ? undefined
+        : differs
+          ? `상신자 지정 결정 ${explicit} — 근거 판단안 ${asm.id} 권고 ${asmContractDecision ?? '없음'} 와 다름`
+          : `상신자 지정 결정 ${explicit} — 근거 판단안 ${asm.id} 권고와 같음`;
     tx.setTask(t, 'DONE', t.ownerRole, 'HUMAN', '재상신', input.resultNote ?? '');
     if (prev.status === 'PENDING') tx.setApproval(prev, 'SUPERSEDED', 'SYSTEM', 'SYSTEM', ['R-AUTH-06'], '재상신으로 대체');
     const r = routeContract(c);
-    tx.addApproval({
-      subjectType: 'CONTRACT',
-      subjectIds: [c.id],
-      requiredRole: r.requiredRole,
-      alsoReportTo: r.alsoReportTo,
-      routingReasons: r.reasons,
-      assessmentId: asm?.id ?? null,
-      proposed: [{ itemId: c.id, decision: proposedDecision }],
-      internalDueAt: internalDueAt('CONTRACT_APPROVAL', c.noticeDeadline),
-      hardDeadline: c.noticeDeadline,
-      version: prev.version + 1,
-      supersedesId: prev.id,
-    });
+    const created = tx.addApproval(
+      {
+        subjectType: 'CONTRACT',
+        subjectIds: [c.id],
+        requiredRole: r.requiredRole,
+        alsoReportTo: r.alsoReportTo,
+        routingReasons: r.reasons,
+        assessmentId: asm.id,
+        proposed: [{ itemId: c.id, decision: proposedDecision }],
+        internalDueAt: internalDueAt('CONTRACT_APPROVAL', c.noticeDeadline),
+        hardDeadline: c.noticeDeadline,
+        version: prev.version + 1,
+        supersedesId: prev.id,
+        ...(differs ? { proposedSource: 'SUBMITTER' as const } : {}),
+      },
+      submitterNote,
+    );
+    // BE-23: 재검토는 재상신을 위한 준비 — 재상신이 끝나면 열린 「기한 전 재검토」를 닫는다. 사람이 완료를 기록한 것이 아니므로 DONE 이 아니라 CANCELLED (ONTOLOGY 3-4).
+    // 이미 DONE 인 것은 그대로 둔다. 「승인조건 문서화」 등 사람이 실제로 해야 하는 작업은 닫지 않는다
+    for (const rv of tx.s.tasks) {
+      if (rv.type !== 'REVIEW_BEFORE_DEADLINE' || rv.subjectType !== 'CONTRACT' || rv.subjectId !== c.id || !OPEN_TASK.includes(rv.status)) continue;
+      const reason = `재상신 완료로 종료 — 재검토 결과는 재상신 요청 ${created.id} · 근거 판단안 ${asm.id}`;
+      tx.setTask(rv, 'CANCELLED', 'SYSTEM', 'SYSTEM', reason, reason);
+    }
     tx.setContract('PENDING_APPROVAL', 'SYSTEM', 'SYSTEM', ['R-AUTH-02'], `재상신 v${prev.version + 1} (supersedes ${prev.id})`);
     return tx.result();
   }

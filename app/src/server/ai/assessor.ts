@@ -4,7 +4,7 @@
  */
 import type { AssessmentBasis, Narrative } from '@/domain/assessment';
 import { validateAssessmentNumbers } from '@/domain/provenance';
-import type { IsoDateTime, ToolCallLog } from '@/domain/types';
+import type { AiTurnTrace, IsoDateTime, ToolCallLog } from '@/domain/types';
 import type { AssessmentDraft } from '@/domain/workflow';
 import { runAssessmentAgent, runTool, type AgentOptions } from './agent';
 import { MODEL, type MessagesClient } from './client';
@@ -27,7 +27,7 @@ export function systemToolCalls(basis: AssessmentBasis): ToolCallLog[] {
 export function draftFromBasis(
   basis: AssessmentBasis,
   narrative: Narrative,
-  meta: { aiMode: 'LIVE' | 'MOCK'; createdAt: IsoDateTime; toolCalls: ToolCallLog[]; fallbackReason?: string | null; stopReason?: string | null; warnings?: string[] },
+  meta: { aiMode: 'LIVE' | 'MOCK'; createdAt: IsoDateTime; toolCalls: ToolCallLog[]; fallbackReason?: string | null; stopReason?: string | null; warnings?: string[]; trace?: AiTurnTrace[] },
 ): AssessmentDraft {
   return {
     subjectType: basis.subjectType,
@@ -48,10 +48,11 @@ export function draftFromBasis(
     fallbackReason: meta.fallbackReason ?? null,
     stopReason: meta.stopReason ?? null,
     warnings: meta.warnings ?? [],
+    ...(meta.trace && meta.trace.length > 0 ? { aiTrace: meta.trace } : {}),
   };
 }
 
-export function mockDraft(basis: AssessmentBasis, createdAt: IsoDateTime, extra: { fallbackReason?: string | null; warnings?: string[]; toolCalls?: ToolCallLog[]; stopReason?: string | null } = {}): AssessmentDraft {
+export function mockDraft(basis: AssessmentBasis, createdAt: IsoDateTime, extra: { fallbackReason?: string | null; warnings?: string[]; toolCalls?: ToolCallLog[]; stopReason?: string | null; trace?: AiTurnTrace[] } = {}): AssessmentDraft {
   return draftFromBasis(basis, basis.mockNarrative, {
     aiMode: 'MOCK',
     createdAt,
@@ -59,6 +60,7 @@ export function mockDraft(basis: AssessmentBasis, createdAt: IsoDateTime, extra:
     fallbackReason: extra.fallbackReason ?? null,
     stopReason: extra.stopReason ?? null,
     warnings: extra.warnings ?? [],
+    ...(extra.trace ? { trace: extra.trace } : {}),
   });
 }
 
@@ -77,13 +79,13 @@ export function createAssessor(client: MessagesClient | null, opts: AgentOptions
       const out = await runAssessmentAgent(basis, client, opts);
       if (!out.ok) {
         const warn = out.refusal ? 'AI 가 판단안 작성을 거절했습니다 — 규칙 결과만 표시' : '실시간 호출 실패 → 모의로 생성';
-        return mockDraft(basis, ctx.createdAt, { fallbackReason: out.reason, warnings: [warn], toolCalls: out.toolCalls, stopReason: out.stopReason });
+        return mockDraft(basis, ctx.createdAt, { fallbackReason: out.reason, warnings: [warn], toolCalls: out.toolCalls, stopReason: out.stopReason, trace: out.trace });
       }
-      const draft = draftFromBasis(basis, out.narrative, { aiMode: 'LIVE', createdAt: ctx.createdAt, toolCalls: out.toolCalls, stopReason: out.stopReason });
+      const draft = draftFromBasis(basis, out.narrative, { aiMode: 'LIVE', createdAt: ctx.createdAt, toolCalls: out.toolCalls, stopReason: out.stopReason, trace: out.trace });
       const check = validateAssessmentNumbers(draft);
       if (!check.ok) {
         const list = check.violations.slice(0, 5).map((v) => `${v.field}:${v.token}(${v.reason})`).join(', ');
-        return mockDraft(basis, ctx.createdAt, { fallbackReason: `AI 문장에 출처 없는 숫자 — ${list}`, warnings: ['AI 문장의 숫자가 사실 · 규칙 결과에 없어 규칙 문구로 대체'], toolCalls: out.toolCalls, stopReason: out.stopReason });
+        return mockDraft(basis, ctx.createdAt, { fallbackReason: `AI 문장에 출처 없는 숫자 — ${list}`, warnings: ['AI 문장의 숫자가 사실 · 규칙 결과에 없어 규칙 문구로 대체'], toolCalls: out.toolCalls, stopReason: out.stopReason, trace: out.trace });
       }
       return draft;
     },

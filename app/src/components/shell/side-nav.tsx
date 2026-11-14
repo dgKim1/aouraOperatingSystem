@@ -13,6 +13,7 @@ const NAV: { href: string; label: string; group?: string }[] = [
   { href: '/analysis/influencers', label: '성과', group: '분석' },
   { href: '/analysis/inventory', label: '재고', group: '분석' },
   { href: '/analysis/cash', label: '자금', group: '분석' },
+  { href: '/assessments/recorded', label: 'AI 실행 기록' },
   { href: '/history', label: '처리 이력' },
   { href: '/data', label: '데이터 출처' },
   { href: '/scenarios', label: '시연 시나리오' },
@@ -22,7 +23,7 @@ export function SideNav({ badges }: { badges: Record<string, number> }) {
   const path = usePathname();
   const active = (href: string) => {
     if (href === '/') return path === '/';
-    const key = href.startsWith('/analysis') ? href : `/${href.split('/')[1]}`;
+    const key = href.startsWith('/analysis') || href.startsWith('/assessments') ? href : `/${href.split('/')[1]}`;
     return path === key || path.startsWith(`${key}/`) || path === href;
   };
   return (

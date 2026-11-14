@@ -487,6 +487,14 @@ export interface ToolCallLog {
   actor: 'AI' | 'SYSTEM';
 }
 
+export interface AssessmentUnknown {
+  gapId: string;
+  impact: string;
+  status: 'OPEN' | 'FILLED_BY_MOCK';
+  /** 표시 문구 — '미확인' | '모의 회신으로 보완 — 원본 공백은 그대로' */
+  statusText: string;
+}
+
 export interface Assessment {
   id: string;
   subjectType: SubjectType;
@@ -498,7 +506,11 @@ export interface Assessment {
   recommendation: { alternativeId: string; rationale: string };
   perspectives: { marketing: string; finance: string; contract: string; scm: string };
   claimsCited: { text: string; ref: SourceRef }[];
-  unknowns: { gapId: string; impact: string }[];
+  /**
+   * 미확인 · 공백 목록. status = 판단안을 만든 시점의 공백 상태(스냅샷) — OPEN(미확인) | FILLED_BY_MOCK(모의 회신으로 보완 — 원본 공백은 그대로).
+   * 모의 회신으로 채워져도 목록에서 빼지 않는다 (BE-21, S-12 와 같은 판정 함수 domain/gaps.ts)
+   */
+  unknowns: AssessmentUnknown[];
   aiMode: 'LIVE' | 'MOCK';
   model: string;
   version: number;
@@ -511,6 +523,17 @@ export interface Assessment {
   /** 모델 응답 stop_reason (모의면 null) */
   stopReason?: string | null;
   warnings?: string[];
+  /** 실시간 호출 추적 — 모델 응답마다 1행 (응답이 돌려준 모델 ID · stop_reason · 토큰 수). 모의 판단안에는 없다. 키 · 헤더 · 본문은 넣지 않는다 */
+  aiTrace?: AiTurnTrace[];
+}
+
+export interface AiTurnTrace {
+  messageId: string;
+  /** API 응답의 model 필드 (요청한 MODEL 과 같아야 한다) */
+  model: string;
+  stopReason: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
 }
 
 export type ApprovalStatus =
@@ -536,6 +559,8 @@ export interface ApprovalRequest {
   status: ApprovalStatus;
   version: number;
   supersedesId: string | null;
+  /** 권고안(proposed)이 근거 판단안 권고와 다른 상신자 지정 결정일 때만 'SUBMITTER' (BE-22). 없으면 판단안 · 규칙 권고 그대로 */
+  proposedSource?: 'SUBMITTER';
 }
 
 export type ReplyOutcome = 'APPROVED' | 'APPROVED_WITH_CONDITIONS' | 'REJECTED' | 'INFO_REQUESTED';

@@ -1,6 +1,7 @@
 /** S-06 승인 요청 상세 — 권한자가 근거(권고 · 권한 근거 · 기한 · 경고)를 보고 회신한다 */
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { UserPen } from 'lucide-react';
 import { AlertList, InlineWarning } from '@/components/alerts/alert-item';
 import { ReplyPanel } from '@/components/approval/reply-panel';
 import { SourceBadgeStatic } from '@/components/badges/source-badge';
@@ -77,8 +78,25 @@ export default async function ApprovalDetailPage({ params }: { params: Promise<{
                 </li>
               ))}
             </ul>
+            {v.proposedSource === 'SUBMITTER' && (
+              <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 p-2 text-sm text-amber-950" role="note">
+                <UserPen className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <div>
+                  <p className="font-semibold">상신자 지정 — 판단안 권고와 다름</p>
+                  <p className="text-xs">
+                    이 요청의 권고안은 상신자(계약 담당)가 지정했습니다. 근거 판단안{v.assessmentId ? ` ${v.assessmentId}` : ''} 의 권고: <strong>{v.assessmentDecisionText ?? '권고 없음'}</strong>. 지정 사실은 아래 처리 이력의 요청 생성 사유에 남아 있습니다.
+                  </p>
+                </div>
+              </div>
+            )}
+            {v.proposedSource === 'ASSESSMENT' && v.assessmentDecisionText && (
+              <p className="mt-2 text-xs text-zinc-700">
+                근거 판단안{v.assessmentId ? ` ${v.assessmentId}` : ''} 권고: <strong>{v.assessmentDecisionText}</strong> — 요청 권고안과 같음
+              </p>
+            )}
             <p className="mt-2 text-xs text-zinc-600">
-              권고는 규칙 엔진 결과 <SourceBadgeStatic label="AGGREGATED" />.{' '}
+              {v.proposedSource === 'SUBMITTER' ? '권고안은 상신자 지정 값 (판단안 권고는 규칙 엔진 결과' : '권고는 규칙 엔진 결과'} <SourceBadgeStatic label="AGGREGATED" />
+              {v.proposedSource === 'SUBMITTER' ? ')' : ''}.{' '}
               {v.assessmentId ? (
                 <Link href={`/assessments/${v.assessmentId}`} className="underline">
                   판단안 {v.assessmentId} 보기

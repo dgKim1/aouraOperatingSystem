@@ -89,3 +89,27 @@ export function UnknownChip({ gapId, note }: { gapId: string; note?: string }) {
     </span>
   );
 }
+
+/**
+ * 공백 상태 칩 (FE-10 · FE-15) — S-05 미확인 목록 · S-03 판단안 탭 · S-12 공백 탭이 같은 표시를 쓴다.
+ * 상태 · 문구는 서버 값 그대로: OPEN = 「미확인」 칩, FILLED_BY_MOCK = `모의` 배지 + 서버 문구. "해소"는 쓰지 않는다(원본 공백은 그대로 — A-33).
+ */
+export function GapStatusChip({ gapId, status, statusText }: { gapId?: string; status: 'OPEN' | 'FILLED_BY_MOCK'; statusText: string }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {status === 'OPEN' ? (
+        <span className="inline-flex h-5 w-fit items-center rounded border border-dashed border-zinc-400 bg-zinc-50 px-1.5 text-[11px] font-medium text-zinc-700">{statusText || '미확인'}</span>
+      ) : (
+        <span className="inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-zinc-800">
+          <span className="inline-flex h-5 shrink-0 items-center rounded border border-dashed border-zinc-500 bg-white px-1.5 text-[11px] leading-none font-medium whitespace-nowrap text-zinc-700">모의</span>
+          {statusText}
+        </span>
+      )}
+      {gapId && (
+        <Link href={`/data?tab=gaps#${gapId}`} className="text-xs text-zinc-700 underline underline-offset-2">
+          {gapId}
+        </Link>
+      )}
+    </span>
+  );
+}

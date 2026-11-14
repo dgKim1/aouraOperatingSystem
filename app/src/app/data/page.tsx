@@ -1,5 +1,6 @@
 /** S-12 데이터 출처 · 가정 · 공백 — 완료 조건 5(원본과 가정 구분)의 단일 증거 화면 */
 import { SourceBadgeStatic } from '@/components/badges/source-badge';
+import { GapStatusChip } from '@/components/badges/values';
 import { PageHeader, Section } from '@/components/common';
 import { TabLinks } from '@/components/tab-links';
 import { cn } from '@/lib/utils';
@@ -92,10 +93,9 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
 
 /** FE-10 공백 상태 2종 — 서버 status · statusText 그대로. OPEN = "미확인" 칩, FILLED_BY_MOCK = 모의 배지 + 서버 문구. "해소"는 쓰지 않는다 */
 function GapStatusCell({ g }: { g: { status: 'OPEN' | 'FILLED_BY_MOCK'; statusText: string } }) {
-  if (g.status === 'OPEN') return <span className="inline-flex h-5 w-fit items-center self-start rounded border border-dashed border-zinc-400 bg-zinc-50 px-1.5 text-[11px] font-medium text-zinc-700">{g.statusText || '미확인'}</span>;
   return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-zinc-800">
-      <SourceBadgeStatic label="MOCK" /> {g.statusText}
+    <span className="self-start">
+      <GapStatusChip status={g.status} statusText={g.statusText} />
     </span>
   );
 }

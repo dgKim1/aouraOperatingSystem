@@ -16,7 +16,8 @@ import { AssessButton, RequestApprovalButton } from '@/components/mutation/asses
 import { CounterpartyReplyForm } from '@/components/mutation/counterparty-reply-form';
 import { Button } from '@/components/ui/button';
 import type { ContractTermRow } from '@/domain/api-types';
-import { getContract, getInfluencerRows, getMeta, getSession, getTasks } from '../../_data/views';
+import { UnknownList } from '@/components/assessment/parts';
+import { getAssessment, getContract, getInfluencerRows, getMeta, getSession, getTasks } from '../../_data/views';
 
 const TABS = [
   { id: 'overview', label: '개요' },
@@ -39,6 +40,8 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const tab = typeof sp.tab === 'string' && TABS.some((t) => t.id === sp.tab) ? sp.tab : 'overview';
   const c = v.contract;
   const base = `/contracts/${c.id}`;
+  // 판단안 탭의 미확인 · 공백 요약 (FE-15) — 최신 판단안 상세를 그대로 읽는다 (상태 · 문구는 서버 값)
+  const latestDetail = tab === 'assessment' && v.latestAssessment ? await getAssessment(v.latestAssessment.id) : null;
 
   return (
     <div className="space-y-4">
@@ -228,6 +231,12 @@ export default async function ContractPage({ params, searchParams }: { params: P
                 <p className="mt-1 flex items-start gap-1 text-xs text-zinc-700">
                   {v.latestAssessment.mock && <SourceBadgeStatic label="MOCK" />} {v.latestAssessment.recommendation.rationale}
                 </p>
+                {latestDetail && (
+                  <div className="mt-2 border-t pt-2">
+                    <h4 className="mb-1 text-xs font-semibold text-zinc-700">미확인 · 공백 ({latestDetail.unknowns.length})</h4>
+                    <UnknownList unknowns={latestDetail.unknowns} compact />
+                  </div>
+                )}
               </div>
             ) : (
               <p>아직 판단안이 없습니다.</p>
