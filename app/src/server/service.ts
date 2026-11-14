@@ -23,6 +23,7 @@ import type {
   TaskPatchResponse,
 } from '@/domain/api-types';
 import { buildAssessmentBasis } from '@/domain/assessment';
+import { assertReplenishmentDrafter, assertTaskActor } from '@/domain/permissions';
 import type { MasilDataset } from '@/domain/dataset';
 import { deadlineAt, kstDate, toMs } from '@/domain/dates';
 import { DomainError } from '@/domain/errors';
@@ -126,8 +127,11 @@ export class AouraService {
       }
     }
     if (r.event?.type === 'EXPANSION_PROPOSAL_RECEIVED') {
-      const first = [...s.lines].sort((a, b) => a.contractDeadline.localeCompare(b.contractDeadline))[0]?.contractDeadline;
-      for (const l of s.lines) if (l.contractDeadline === first) ids.add(l.id);
+      // 이번에 접수한 건 중 확정기한이 가장 이른 묶음
+      const fresh = new Set(r.transitions.filter((t) => t.entityType === 'EXPANSION_LINE' && t.fromStatus === null).map((t) => t.entityId));
+      const got = s.lines.filter((l) => fresh.has(l.id));
+      const first = [...got].sort((a, b) => a.contractDeadline.localeCompare(b.contractDeadline))[0]?.contractDeadline;
+      for (const l of got) if (l.contractDeadline === first) ids.add(l.id);
     }
     return [...ids];
   }
@@ -135,7 +139,7 @@ export class AouraService {
   private result(prev: wf.WorldState, next: wf.WorldState, r: wf.WorkflowResult, version: number): MutationResult {
     const needs = this.needsAssessment(next, r);
     return {
-      transitions: r.transitions,
+      transitions: V.auditRows(next, r.transitions),
       createdTasks: r.createdTasks,
       createdApprovals: r.createdApprovals,
       routingChanges: r.routingChanges,
@@ -248,6 +252,10 @@ export class AouraService {
     const { s } = await this.read();
     return V.auditView(s, f);
   }
+  async receivables() {
+    const { s, ds } = await this.read();
+    return V.receivablesView(s, ds);
+  }
   async registry() {
     const { s, d } = await this.read();
     return V.registryView(s, d.rowCounts);
@@ -303,6 +311,8 @@ export class AouraService {
       }
       case 'EXPANSION_PROPOSAL_RECEIVED': {
         const id = str(p, 'proposalId')!;
+        // BE-20: 범위 선택 없음 — 일부 접수는 기안 총액(R-AUTH-01)을 낮춰 권한 제약을 없앨 수 있다
+        if (p.lineIds !== undefined) bad('기안은 25건 전체로 접수합니다 (권한 판정 기안 총액 — R-AUTH-01)', { field: 'lineIds' });
         run = (s, ds) => {
           if (id !== 'PROP-2026-07') throw new DomainError('NOT_FOUND', `확대 기안 없음: ${id}`);
           return wf.receiveProposal(s, ds);
@@ -413,28 +423,35 @@ export class AouraService {
     return { ...m.mr, event: m.r.event!, reply: ev!.payload as ReplyResponse['reply'], request: m.next.approvals.find((a) => a.id === requestId)! };
   }
 
+  /**
+   * 작업 시작 · 완료 · 취소. actorRole(요청한 사람의 현재 역할)은 필수 — 없으면 422 VALIDATION.
+   * 작업의 담당 역할이 아니면 도메인(assertTaskActor)이 422 FORBIDDEN_ROLE 로 거부하고 아무것도 저장하지 않는다 (CLAUDE.md 규칙 10).
+   */
   async patchTask(id: string, body0: unknown): Promise<TaskPatchResponse> {
     const b = obj(body0, '요청');
     const status = oneOf(str(b, 'status'), ['IN_PROGRESS', 'DONE', 'CANCELLED'] as const, 'status');
-    const actorRole = b.actorRole === undefined ? undefined : oneOf(str(b, 'actorRole'), ACTORS, 'actorRole');
+    const actorRole = oneOf(str(b, 'actorRole'), ACTORS, 'actorRole');
     const resultNote = str(b, 'resultNote', false);
     const payload = b.payload === undefined ? undefined : obj(b.payload, 'payload');
     if (payload?.settlementDate !== undefined && (typeof payload.settlementDate !== 'string' || !DATE_RE.test(payload.settlementDate))) bad('payload.settlementDate 는 YYYY-MM-DD', { field: 'payload.settlementDate' });
-    const body: TaskPatchBody = { status, ...(actorRole ? { actorRole } : {}), ...(resultNote ? { resultNote } : {}), ...(payload ? { payload } : {}) };
+    const body: TaskPatchBody = { status, actorRole, ...(resultNote ? { resultNote } : {}), ...(payload ? { payload } : {}) };
     const m = await this.mutate((s, ds) => {
       const t = s.tasks.find((x) => x.id === id);
       if (!t) throw new DomainError('NOT_FOUND', `작업 없음: ${id}`);
-      const actor = body.actorRole ?? t.ownerRole;
-      if (body.status === 'IN_PROGRESS') return wf.startTask(s, id, actor);
-      if (body.status === 'CANCELLED') return wf.cancelTask(s, id, { actorRole: actor, reason: body.resultNote ?? '' });
+      if (body.status === 'IN_PROGRESS') return wf.startTask(s, id, actorRole);
+      if (body.status === 'CANCELLED') return wf.cancelTask(s, id, { actorRole, reason: body.resultNote ?? '' });
+      assertTaskActor(t, actorRole);
       if (t.type === 'RESCHEDULE_CAMPAIGN' && typeof body.payload?.settlementDate === 'string' && body.payload.settlementDate < kstDate(s.simNow)) bad('기준시각 이전 날짜로 집행일을 바꿀 수 없습니다', { field: 'payload.settlementDate' });
-      return wf.completeTask(s, ds, id, { ...(body.resultNote ? { resultNote: body.resultNote } : {}), ...(body.payload ? { payload: body.payload } : {}) });
+      return wf.completeTask(s, ds, id, { actorRole, ...(body.resultNote ? { resultNote: body.resultNote } : {}), ...(body.payload ? { payload: body.payload } : {}) });
     });
     return { ...m.mr, task: V.taskView(m.next.tasks.find((x) => x.id === id)!) };
   }
 
+  /** 보충요청 초안 — actorRole 필수, SCM 만 (SCREEN_SPEC S-09). 아니면 422 FORBIDDEN_ROLE, 상태 불변 */
   async createReplenishment(body0: unknown): Promise<ReplenishmentCreateResponse> {
     const b = obj(body0, '요청');
+    const actorRole = oneOf(str(b, 'actorRole'), ACTORS, 'actorRole');
+    assertReplenishmentDrafter(actorRole);
     const triggerLineId = str(b, 'triggerLineId')!;
     const skuIds = b.skuIds;
     if (skuIds !== undefined && (!Array.isArray(skuIds) || !skuIds.every((x) => typeof x === 'string'))) bad('skuIds 는 문자열 배열', { field: 'skuIds' });

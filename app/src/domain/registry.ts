@@ -39,6 +39,8 @@ export const ASSUMPTIONS: { id: string; text: string; reason: string; usedIn: st
   { id: 'A-32', text: '재무팀 공식 전망 week(월요일) = 그 월요일에 끝나는 기간(직전 화 ~ 해당 월, 첫 주 7/1 ~ 7/6). 대조값 = 재전망의 week 날짜 종가, 하회 = 기간 내 영업일 중 종가 < 30억', reason: 'week 정의가 원본에 없음(미확인) — forecast_date 6/30 · 13행 모두 월요일 · 직전 종가에서 이어짐(집계 확인)', usedIn: 'R-CASH-03 · S-10 비교표' },
   { id: 'A-33', text: '에이전시 「정보 제공」 모의 회신 문구를 계약 성과 피 조건(performanceFeeTerms)에 모의 값으로 기록 — 금액 · 비율로 바꾸지 않고, 권한 판정 연 금액은 계속 하한 28억', reason: '원본에 성과 피 산식 없음(G-02), 회신은 모의 — 원본 공백은 해소된 것이 아님', usedIn: 'R-AUTH-02 · G-02' },
   { id: 'A-34', text: 'SCM 「거절(보충 불가)」 모의 회신이면 보충요청 초안을 승인 절차 없이 DRAFT → REJECTED(보충 불가)로 종결하고 연결 기안 건 공급 전망을 NO_SUPPLY 로', reason: '원본에 SCM 검토 거절 절차 없음 — 품절 제약을 회신 결과로 지우지 않는다', usedIn: '보충요청 · R-INV-03' },
+  { id: 'A-35', text: '작업의 시작 · 완료 · 취소는 작업 담당 역할(ownerRole)만, 보충요청 초안 생성은 SCM 만 (AI_AGENT · SYSTEM 은 행위자 불가). actorRole 이 다르면 422 FORBIDDEN_ROLE, 없으면 422 VALIDATION, 상태 불변. SCM 보충 검토 작업은 PATCH 로 완료하지 않고 SCM 보충 검토 회신으로만 닫는다', reason: '원본에 작업 처리 권한 규정 없음 — 작업 완료가 다른 엔티티를 바꾸므로 담당 경계를 서버에서 지킨다 (2026-11-14 기획 결정)', usedIn: '작업 처리 · 보충요청 초안 · BE-17 · BE-18' },
+  { id: 'A-36', text: '결정을 확정하지 않는 쓰기(사건 입력 · 외부 회신 · 판단안 생성 · 승인요청 상신)와 시연 운영 행위(시점 이동 · 시나리오 리셋)는 호출 역할을 검사하지 않는다. 이력 행위자는 사건 유형별 고정값 또는 SYSTEM · AI_AGENT. 로그인은 범위 밖', reason: '승인 효력을 만들지 않고 권한자 · 기한 · 공급 제약은 규칙 코드가 정해 누가 눌러도 결과가 같다 (2026-11-14 기획 결정)', usedIn: '쓰기 행위별 허용 역할' },
 ];
 
 export const GAPS: { id: string; text: string; link: string; handling: string }[] = [

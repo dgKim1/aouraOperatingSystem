@@ -94,7 +94,7 @@ describe('② 조건 변경을 API 로 (AC-2-01~05 · AC-2-10)', () => {
     );
     expect(ok.body.createdTasks.map((t) => t.type)).toEqual(['RESCHEDULE_CAMPAIGN']);
     // 집행일 조정 작업 완료 → 권한 하향, 재상신 없음 (AC-2-06)
-    const done = await call<{ createdApprovals: unknown[]; routingChanges: { action: string }[] }>(task.PATCH(req('', 'PATCH', { status: 'DONE', payload: { settlementDate: '2026-08-31' } }), ctx({ id: ok.body.createdTasks[0]!.id })));
+    const done = await call<{ createdApprovals: unknown[]; routingChanges: { action: string }[] }>(task.PATCH(req('', 'PATCH', { status: 'DONE', actorRole: 'MARKETING_TEAM', payload: { settlementDate: '2026-08-31' } }), ctx({ id: ok.body.createdTasks[0]!.id })));
     expect(done.body.createdApprovals).toEqual([]);
     expect(done.body.routingChanges.map((r) => r.action)).toEqual(['KEEP_HIGHER_APPROVAL']);
     const c = await call<CashView>(cash.GET(req('/api/analytics/cash')));
@@ -137,7 +137,7 @@ describe('④ 재고 · SCM 을 API 로', () => {
 
   it('보충 초안(중복 409) → SCM 추가 발주 필요 → GCB 승인요청 → 거절 → 권고 부결', async () => {
     await doReset('S4');
-    const dup = await call<ApiError>(replenish.POST(req('', 'POST', { triggerLineId: 'PLAN-011' })));
+    const dup = await call<ApiError>(replenish.POST(req('', 'POST', { triggerLineId: 'PLAN-011', actorRole: 'SCM' })));
     expect(dup.status).toBe(409);
     const e = await call<EventResponse>(events.POST(req('', 'POST', { type: 'COUNTERPARTY_REPLY', payload: { from: 'SCM', outcome: 'INFO_PROVIDED', replenishmentNeeded: true, note: '추가 발주 필요 (모의)' } })));
     const apr = e.body.createdApprovals[0]!;
@@ -151,7 +151,7 @@ describe('④ 재고 · SCM 을 API 로', () => {
 
   it('보충 제안 대상이 아닌 건 · SKU 는 422', async () => {
     await doReset('S4');
-    const r = await call<ApiError>(replenish.POST(req('', 'POST', { triggerLineId: 'PLAN-001' })));
+    const r = await call<ApiError>(replenish.POST(req('', 'POST', { triggerLineId: 'PLAN-001', actorRole: 'SCM' })));
     expect(r.status).toBe(422);
   });
 });
@@ -171,11 +171,11 @@ describe('BE-07 시점 이동 미리보기 · 데이터 출처', () => {
     expect(back.body.error.code).toBe('CLOCK_BACKWARD');
   });
 
-  it('데이터 출처: 원본 17개 파일 행 수 · 가정 34개 · 모의 회신에 거절 · 정보 부족 포함', async () => {
+  it('데이터 출처: 원본 17개 파일 행 수 · 가정 36개 · 모의 회신에 거절 · 정보 부족 포함', async () => {
     const r = await call<RegistryView>(registry.GET());
     expect(r.body.sources).toHaveLength(17);
     expect(r.body.sources.find((x) => x.file.endsWith('mkt_orders_ms.csv'))!.rows).toBe(15_650);
-    expect(r.body.assumptions).toHaveLength(34);
+    expect(r.body.assumptions).toHaveLength(36);
     expect(r.body.mocks.map((m) => m.outcome)).toEqual(expect.arrayContaining(['REJECTED', 'INSUFFICIENT', 'INFO_REQUESTED']));
   });
 });

@@ -6,9 +6,11 @@
  */
 import { useState } from 'react';
 import { Inbox } from 'lucide-react';
-import type { EventResponse } from '@/domain/api-types';
-import type { SourceLabel } from '@/domain/types';
+import type { EventResponse, ReceivableView } from '@/domain/api-types';
+import type { ActorRole, SourceLabel } from '@/domain/types';
 import { SourceBadgeStatic } from '@/components/badges/source-badge';
+import { MoneyValue, TextValue } from '@/components/badges/values';
+import { fmtKrw } from '@/components/format';
 import { AssessButton } from '@/components/mutation/assessment-actions';
 import { useApiAction } from '@/components/mutation/api-client';
 import { CounterpartyReplyForm } from '@/components/mutation/counterparty-reply-form';
@@ -33,7 +35,7 @@ function Card({ title, label, children }: { title: string; label: SourceLabel; c
 }
 
 /** 결과 패널 + 새 판단안이 필요한 대상에 [AI 판단안 만들기] */
-function EventResult({ r, onClose, aiMode }: { r: EventResponse; onClose: () => void; aiMode: 'LIVE' | 'MOCK' }) {
+function EventResult({ r, onClose, aiMode, actorRole }: { r: EventResponse; onClose: () => void; aiMode: 'LIVE' | 'MOCK'; actorRole: ActorRole }) {
   // ID 체계(계약 CTR- · 기안 건 PLAN-)로 판단안 대상 유형만 나눈다 — 무엇이 필요한지는 서버가 정함
   const contracts = r.needsAssessment.filter((id) => id.startsWith('CTR-'));
   const lines = r.needsAssessment.filter((id) => id.startsWith('PLAN-'));
@@ -47,9 +49,9 @@ function EventResult({ r, onClose, aiMode }: { r: EventResponse; onClose: () => 
           <div className="space-y-2 rounded border border-blue-200 bg-white p-2">
             <p className="text-xs font-semibold text-blue-900">새 판단안이 필요합니다</p>
             {contracts.map((c) => (
-              <AssessButton key={c} subjectType="CONTRACT" subjectIds={[c]} label={`계약 ${c} 판단안 만들기`} aiMode={aiMode} />
+              <AssessButton key={c} subjectType="CONTRACT" subjectIds={[c]} label={`계약 ${c} 판단안 만들기`} aiMode={aiMode} actorRole={actorRole} />
             ))}
-            {lines.length > 0 && <AssessButton subjectType="EXPANSION_LINES" subjectIds={lines} label={`기안 ${lines.length}건 판단안 만들기`} aiMode={aiMode} />}
+            {lines.length > 0 && <AssessButton subjectType="EXPANSION_LINES" subjectIds={lines} label={`기안 ${lines.length}건 판단안 만들기`} aiMode={aiMode} actorRole={actorRole} />}
           </div>
         )
       }
@@ -57,7 +59,7 @@ function EventResult({ r, onClose, aiMode }: { r: EventResponse; onClose: () => 
   );
 }
 
-function SimpleEvent({ title, label, body, submitLabel, aiMode, children, disabledReason }: { title: string; label: SourceLabel; body: () => unknown; submitLabel: string; aiMode: 'LIVE' | 'MOCK'; children?: React.ReactNode; disabledReason?: string | null }) {
+function SimpleEvent({ title, label, body, submitLabel, aiMode, actorRole, children, disabledReason }: { title: string; label: SourceLabel; body: () => unknown; submitLabel: string; aiMode: 'LIVE' | 'MOCK'; actorRole: ActorRole; children?: React.ReactNode; disabledReason?: string | null }) {
   const act = useApiAction<EventResponse>();
   return (
     <Card title={title} label={label}>
@@ -78,14 +80,15 @@ function SimpleEvent({ title, label, body, submitLabel, aiMode, children, disabl
       </form>
       <div className="mt-2 space-y-2">
         {act.error && <ApiErrorBox error={act.error} />}
-        {act.result && <EventResult r={act.result} onClose={act.reset} aiMode={aiMode} />}
+        {act.result && <EventResult r={act.result} onClose={act.reset} aiMode={aiMode} actorRole={actorRole} />}
       </div>
     </Card>
   );
 }
 
-export function EventForms({ contractId, contractStatusText, received, lines, aiMode, today }: { contractId: string; contractStatusText: string; received: boolean; lines: LineOption[]; aiMode: 'LIVE' | 'MOCK'; today: string }) {
-  const [arId, setArId] = useState('MAR-0004');
+export function EventForms({ contractId, contractStatusText, received, lines, aiMode, today, receivables, actorRole }: { contractId: string; contractStatusText: string; received: boolean; lines: LineOption[]; aiMode: 'LIVE' | 'MOCK'; today: string; receivables: ReceivableView[]; actorRole: ActorRole }) {
+  const [arId, setArId] = useState(receivables.some((r) => r.id === 'MAR-0004') ? 'MAR-0004' : (receivables[0]?.id ?? ''));
+  const ar = receivables.find((r) => r.id === arId) ?? null;
   const [newDue, setNewDue] = useState('');
   const [lineId, setLineId] = useState(lines[0]?.id ?? '');
   const [amount, setAmount] = useState('');
@@ -93,27 +96,53 @@ export function EventForms({ contractId, contractStatusText, received, lines, ai
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <SimpleEvent title="갱신 통보 접수" label="ORIGINAL" submitLabel="통보 접수" aiMode={aiMode} body={() => ({ type: 'RENEWAL_NOTICE_RECEIVED', payload: { contractId } })}>
+      <SimpleEvent title="갱신 통보 접수" label="ORIGINAL" submitLabel="통보 접수" aiMode={aiMode} actorRole={actorRole} body={() => ({ type: 'RENEWAL_NOTICE_RECEIVED', payload: { contractId } })}>
         <p>
           계약 <span className="font-mono">{contractId}</span> — 원본 <span className="font-mono text-xs">inf001_exclusive_contract_notice.md</span>
         </p>
         <p className="text-xs text-zinc-600">현재 상태: {contractStatusText}</p>
       </SimpleEvent>
 
-      <SimpleEvent title="확대 기안 접수" label="ORIGINAL" submitLabel="기안 접수" aiMode={aiMode} body={() => ({ type: 'EXPANSION_PROPOSAL_RECEIVED', payload: { proposalId: 'PROP-2026-07' } })} disabledReason={received ? '이미 접수됨' : null}>
+      <SimpleEvent title="확대 기안 접수" label="ORIGINAL" submitLabel="기안 접수" aiMode={aiMode} actorRole={actorRole} body={() => ({ type: 'EXPANSION_PROPOSAL_RECEIVED', payload: { proposalId: 'PROP-2026-07' } })} disabledReason={received ? '이미 접수됨' : null}>
         <p>
           기안 <span className="font-mono">PROP-2026-07</span> — 원본 <span className="font-mono text-xs">mkt_budget_plan_ms.csv</span> 25건 전체
         </p>
-        <p className="text-xs text-zinc-600">건 범위 선택(기한별 부분 접수)은 API 가 전체 접수만 받아 두지 않았습니다.</p>
+        <p className="text-xs text-zinc-600">25건 전체로만 접수합니다 — 기안 총액이 권한 판정(1억 · 10억)에 쓰여 일부만 접수하면 권한자가 달라집니다(BE-20).</p>
       </SimpleEvent>
 
-      <SimpleEvent title="회수 지연 통보" label="MOCK" submitLabel="회수 지연 입력 (모의)" aiMode={aiMode} body={() => ({ type: 'AR_COLLECTION_DELAYED', payload: { arId, newDueDate: newDue } })}>
+      <SimpleEvent title="회수 지연 통보" label="MOCK" submitLabel="회수 지연 입력 (모의)" aiMode={aiMode} actorRole={actorRole} body={() => ({ type: 'AR_COLLECTION_DELAYED', payload: { arId, newDueDate: newDue } })}>
         <div className="grid grid-cols-[6rem_1fr] items-center gap-2">
-          <Label htmlFor="ev-ar">AR ID</Label>
-          <input id="ev-ar" className="h-8 w-40 rounded border px-2 font-mono" value={arId} onChange={(e) => setArId(e.target.value)} required aria-describedby="ev-ar-help" />
+          <Label htmlFor="ev-ar">AR (미회수)</Label>
+          <select id="ev-ar" className="h-8 rounded border bg-white px-2 font-mono text-xs" value={arId} onChange={(e) => setArId(e.target.value)} required aria-describedby="ev-ar-help">
+            {receivables.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.id} · {r.channelId} · 만기 {r.currentDue.value}
+                {r.overridden ? ' (지연 반영)' : ''} · 미회수 {fmtKrw(r.outstanding.value)}
+                {r.inForecast ? '' : ' · 재전망 제외'}
+              </option>
+            ))}
+          </select>
           <Label htmlFor="ev-due">새 만기일</Label>
           <input id="ev-due" type="date" min={today} className="h-8 w-44 rounded border px-2" value={newDue} onChange={(e) => setNewDue(e.target.value)} required />
         </div>
+        {ar && (
+          <dl className="grid grid-cols-[6rem_1fr] gap-x-2 gap-y-1 rounded border bg-zinc-50 p-2 text-xs">
+            <dt className="text-zinc-600">원본 만기</dt>
+            <dd>
+              <TextValue t={ar.originalDue} />
+            </dd>
+            <dt className="text-zinc-600">현재 만기</dt>
+            <dd>
+              <TextValue t={ar.currentDue} />
+            </dd>
+            <dt className="text-zinc-600">미회수 금액</dt>
+            <dd>
+              <MoneyValue m={ar.outstanding} />
+            </dd>
+            <dt className="text-zinc-600">재전망 유입</dt>
+            <dd>{ar.inForecast ? '포함' : ar.overdue ? '제외 — 원본 만기가 기준일(7/1) 이전 (A-08)' : '제외'}</dd>
+          </dl>
+        )}
         <p id="ev-ar-help" className="text-xs text-zinc-600">
           ② 시연: MAR-0004 (CH-03 · 원 만기 2026-08-23) → 2026-08-30. 맥락 원본 <span className="font-mono">lc0001_payment_term_notice.md</span>. 지연 통보 자체는 모의.
         </p>
@@ -124,6 +153,7 @@ export function EventForms({ contractId, contractStatusText, received, lines, ai
         label="MOCK"
         submitLabel="정정 입력 (모의)"
         aiMode={aiMode}
+        actorRole={actorRole}
         disabledReason={lines.length === 0 ? '기안 미접수' : null}
         body={() => ({ type: 'LINE_TERMS_CHANGED', payload: { lineId, ...(amount ? { requestedKrw: Number(amount) } : {}), ...(settle ? { settlementDate: settle } : {}) } })}
       >

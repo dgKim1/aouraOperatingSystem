@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CalendarClock, PackageX } from 'lucide-react';
 import type { LineView } from '@/domain/api-types';
+import type { ActorRole } from '@/domain/types';
 import { ClaimsFold, ReferenceChip, ReferenceFold } from '@/components/badges/fold';
 import { MoneyValue, NumValue } from '@/components/badges/values';
 import { FlagChip, LineStatusBadge, RoleChange, RoleChip } from '@/components/common';
@@ -25,7 +26,7 @@ export interface ApprovalRef {
   statusText: string;
 }
 
-export function ProposalTable({ lines, focusId, aiMode, approvals }: { lines: LineView[]; focusId?: string | undefined; aiMode: 'LIVE' | 'MOCK'; approvals: Record<string, ApprovalRef> }) {
+export function ProposalTable({ lines, focusId, aiMode, approvals, actorRole }: { lines: LineView[]; focusId?: string | undefined; aiMode: 'LIVE' | 'MOCK'; approvals: Record<string, ApprovalRef>; actorRole: ActorRole }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showRef, setShowRef] = useState(false);
   const [openId, setOpenId] = useState<string | null>(focusId && lines.some((l) => l.id === focusId) ? focusId : null);
@@ -46,7 +47,7 @@ export function ProposalTable({ lines, focusId, aiMode, approvals }: { lines: Li
           선택 <strong className="tabular-nums">{selected.size}</strong>건
         </span>
         <div className="min-w-0 flex-1">
-          <AssessButton subjectType="EXPANSION_LINES" subjectIds={[...selected].sort()} label="선택 건 판단안 만들기" aiMode={aiMode} disabledReason={selected.size === 0 ? '건을 선택하세요' : null} />
+          <AssessButton subjectType="EXPANSION_LINES" subjectIds={[...selected].sort()} label="선택 건 판단안 만들기" aiMode={aiMode} actorRole={actorRole} disabledReason={selected.size === 0 ? '건을 선택하세요' : null} />
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Switch id="show-ref" checked={showRef} onCheckedChange={setShowRef} />

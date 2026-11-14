@@ -26,7 +26,6 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const [a, meta, { role }] = await Promise.all([getAssessment(decodeURIComponent(id)), getMeta(), getSession()]);
   if (!a) notFound();
-  const label = a.mock ? 'MOCK' : 'INTERPRETED';
   return (
     <div className="space-y-4">
       <PageHeader id="S-05" title={`판단안 ${a.id}`} decision="권한자 · 담당자가 근거(사실 · 규칙 결과) · 대안 · 불확실성을 보고 승인 요청으로 넘길지, 다시 판단할지 정합니다.">
@@ -168,7 +167,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
       <Section title="권고와 이유" id="rec">
         <p className="flex flex-wrap items-start gap-2 text-sm">
-          <SourceBadgeStatic label={label} /> {a.recommendation.rationale}
+          <SentenceMark mock={a.mock} /> {a.recommendation.rationale}
         </p>
         {a.proposedDecisions && a.proposedDecisions.length > 0 && (
           <ul className="mt-2 space-y-0.5 text-sm">
@@ -197,7 +196,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
             <div key={k} className="rounded border p-2">
               <dt className="text-xs font-semibold text-zinc-600">{k}</dt>
               <dd className="flex items-start gap-1">
-                <SourceBadgeStatic label={label} /> {t}
+                <SentenceMark mock={a.mock} /> {t}
               </dd>
             </div>
           ))}
@@ -236,14 +235,27 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
               ))}
             </p>
           ) : (
-            <RequestApprovalButton assessmentId={a.id} />
+            <RequestApprovalButton assessmentId={a.id} actorRole={role.actorRole} />
           )}
-          <AssessButton subjectType={a.subjectType} subjectIds={a.subjectIds} label="다시 판단" aiMode={meta.aiMode} variant="outline" showRequestNext={false} />
+          <AssessButton subjectType={a.subjectType} subjectIds={a.subjectIds} label="다시 판단" aiMode={meta.aiMode} variant="outline" showRequestNext={false} actorRole={role.actorRole} />
           <Link href="/approvals" className="inline-flex items-center text-sm underline">
             승인함으로 (현재 역할 {role.label})
           </Link>
         </div>
       </Section>
     </div>
+  );
+}
+
+/**
+ * AI 가 쓴 문장 표지 (FE-12, ONTOLOGY 0절). 모의 모드는 `모의` 배지, 실시간은 출처 배지가 아닌 「AI 작성」 표지 —
+ * 문장은 값이 아니므로 원본근거해석 배지를 달지 않는다. 문장 속 숫자의 출처는 사실 표의 배지와 숫자 출처 검증으로 보인다.
+ */
+function SentenceMark({ mock }: { mock: boolean }) {
+  if (mock) return <SourceBadgeStatic label="MOCK" />;
+  return (
+    <span className="inline-flex h-5 items-center rounded border border-zinc-400 bg-white px-1.5 text-[11px] font-medium text-zinc-800" title="AI 가 쓴 문장 — 출처 값이 아님. 숫자 출처는 사실 표와 숫자 출처 검증 참고">
+      AI 작성
+    </span>
   );
 }

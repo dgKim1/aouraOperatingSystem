@@ -85,8 +85,8 @@ export interface MetaView {
 
 // ───────── 상태 변경 응답 공통 (UI-05) ─────────
 export interface MutationResult {
-  /** 이번 처리로 생긴 처리 이력 (상태 전이 · 작업 생성 · 권한 재판정 포함) */
-  transitions: AuditLogEntry[];
+  /** 이번 처리로 생긴 처리 이력 (상태 전이 · 작업 생성 · 권한 재판정 포함). 각 행에 표시 문구(displayText 등)가 붙는다 */
+  transitions: AuditRowView[];
   createdTasks: Task[];
   createdApprovals: ApprovalRequest[];
   /** R-AUTH-06 권한 재판정 결과 (from → to, 처리 방식) */
@@ -107,6 +107,7 @@ export interface MutationResult {
 /** POST /api/events 요청 */
 export type EventInput =
   | { type: 'RENEWAL_NOTICE_RECEIVED'; payload: { contractId: string } }
+  /** 기안은 25건 전체로만 접수 (BE-20). 범위 필드(lineIds 등)를 보내면 422 VALIDATION */
   | { type: 'EXPANSION_PROPOSAL_RECEIVED'; payload: { proposalId: string } }
   | { type: 'AR_COLLECTION_DELAYED'; payload: { arId: string; newDueDate: IsoDate } }
   | { type: 'LINE_TERMS_CHANGED'; payload: { lineId: string; requestedKrw?: number; settlementDate?: IsoDate } }
@@ -146,6 +147,10 @@ export interface ReplyResponse extends MutationResult {
 /** PATCH /api/tasks/:id 요청 (S-07) */
 export interface TaskPatchBody {
   status: Extract<TaskStatus, 'IN_PROGRESS' | 'DONE' | 'CANCELLED'>;
+  /**
+   * 요청한 사람의 현재 역할 — **서버에서 필수**(없으면 422 VALIDATION). 작업의 담당 역할(ownerRole)이 아니면 422 FORBIDDEN_ROLE, 상태 불변.
+   * (타입은 프론트엔드 호환을 위해 선택으로 남겨 둠)
+   */
   actorRole?: ActorRole;
   resultNote?: string;
   /** SEND_NOTICE: {content?} · RESCHEDULE_CAMPAIGN: {settlementDate} · RESUBMIT: {assessmentId?, proposedDecision?} */
@@ -162,6 +167,13 @@ export interface ApprovalCreateResponse extends MutationResult {
 
 export interface AssessmentCreateResponse extends MutationResult {
   assessment: AssessmentView;
+}
+
+/** POST /api/replenishment-requests 요청 — actorRole 필수, SCM 이 아니면 422 FORBIDDEN_ROLE (SCREEN_SPEC S-09) */
+export interface ReplenishmentCreateBody {
+  triggerLineId: string;
+  skuIds?: string[];
+  actorRole: ActorRole;
 }
 
 export interface ReplenishmentCreateResponse extends MutationResult {
@@ -282,7 +294,7 @@ export interface OverviewView {
   referenceFlags: ReferenceFlagView[];
   contract: ContractSummary;
   taskCounts: TaskCounts;
-  recentAudit: AuditLogEntry[];
+  recentAudit: AuditRowView[];
   received: boolean;
   /** 기발주 대금 합계 (FULL) — 하회 구간 시작 원인 */
   poPaymentTotal: Money<'FULL'>;
@@ -343,7 +355,7 @@ export interface ContractView {
   performance: InfluencerPerfRow | null;
   notices: Notice[];
   receipts: NoticeReceipt[];
-  audit: AuditLogEntry[];
+  audit: AuditRowView[];
   approvals: ApprovalRequest[];
   consequences: { renewed: boolean; renewalStart: IsoDate; renewalEnd: IsoDate; committed: Money<'FULL'> | null };
   penaltyPreview: { terminateOn: IsoDate; remainingMonths: number; amount: Money<'FULL'> } | null;
@@ -495,7 +507,7 @@ export interface ApprovalView {
   supersededBy: string | null;
   alerts: AlertView[];
   replies: { id: string; respondentRole: ApproverRole; outcome: string; reason: string; simAt: IsoDateTime; label: 'MOCK' }[];
-  audit: AuditLogEntry[];
+  audit: AuditRowView[];
   contractDecisionAllowed: ContractDecision[] | null;
 }
 
@@ -541,11 +553,24 @@ export interface ReplenishmentSuggestionView {
   items: { skuId: string; target: Num; suggested: Num; finalQty: Num; unitCost: Money<'FULL'>; amount: Money<'FULL'> }[];
 }
 
+export interface ReplenishmentRowView extends ReplenishmentRequest {
+  statusText: string;
+  /** 보충 발주 금액 = finalQty × 기발주 단가 (AGGREGATED · FULL, A-17 · A-18) */
+  amount: Money<'FULL'>;
+  /** 기발주 단가 = amount_krw / order_qty (AGGREGATED · FULL) */
+  unitCost: Money<'FULL'>;
+  /** 예상 지급일 = 초안 생성일 + 25일 (ASSUMPTION, A-19) */
+  paymentDate: Txt;
+}
+
 export interface InventoryView {
   rows: InventoryRowView[];
   suggestions: ReplenishmentSuggestionView[];
-  /** statusText 추가 (BE-13): 승인 거절 · SCM '불필요'로 종결 · SCM '보충 불가'로 종결 구분 */
-  replenishments: (ReplenishmentRequest & { statusText: string })[];
+  /**
+   * statusText 추가 (BE-13): 승인 거절 · SCM '불필요'로 종결 · SCM '보충 불가'로 종결 구분.
+   * amount · unitCost · paymentDate (2026-11-14 추가): amountKrw · unitCostKrw · expectedPaymentDate 를 출처 · 스케일과 함께 (화면은 이것을 쓴다)
+   */
+  replenishments: ReplenishmentRowView[];
   simDate: IsoDate;
 }
 
@@ -571,6 +596,34 @@ export interface OfficialComparisonRowView {
   diff: Money<'FULL'>;
   belowThreshold: boolean;
   belowDays: number;
+  /** 최초 재전망(v1) 대비 이 행의 재전망 값 · 하회 영업일 수가 달라졌는가 — 화면 「② 이후 변경」. v1 기준 대조면 항상 false */
+  changedFromV1: boolean;
+  /** 달라졌을 때 v1 의 같은 주 재전망 값 (AGGREGATED), 아니면 null */
+  v1Recalculated: Money<'FULL'> | null;
+  /** 달라졌을 때 v1 의 하회 영업일 수, 아니면 null */
+  v1BelowDays: number | null;
+}
+
+/** S-10 이벤트 표 1행 — 재전망 입력(AR 회수 · AP 지급 · 발주 대금). 제외 행도 사유와 함께 둔다 */
+export interface CashEventRowView {
+  id: string;
+  kind: 'AR_INFLOW' | 'AP_OUTFLOW' | 'PO_PAYMENT';
+  /** 표시 문구 (예 "AR MAR-0001 회수 · CH-02") */
+  item: string;
+  direction: 'IN' | 'OUT';
+  /** 금액 (양수, 방향은 direction). AR 은 outstanding_krw */
+  amount: Money<'FULL'>;
+  /** 원본 만기 · 지급일 */
+  sourceDate: IsoDate;
+  /** 재전망에 놓인 영업일 (제외면 null) */
+  date: IsoDate | null;
+  included: boolean;
+  excludedReason: string | null;
+  /** 원본 파일 · 행 (row = 헤더 제외 1부터) · 행 키 */
+  ref: SourceRef;
+  /** ORIGINAL, 조건 변경(회수 지연)으로 날짜가 바뀐 행은 MOCK */
+  label: SourceLabel;
+  assumptionIds: string[];
 }
 
 export interface CashView {
@@ -589,10 +642,48 @@ export interface CashView {
   officialComparison: OfficialComparisonRowView[];
   largestGap: { week: IsoDate; diff: Money<'FULL'>; notes: Txt[] } | null;
   diffNotes: string[];
+  /** diffNotes 와 같은 내용을 출처 라벨 · refs 와 함께 (공식 전망 CLAIM · 재전망 AGGREGATED · 원인 추정 INTERPRETED · 표본 제외 ORIGINAL) */
+  diffNotesSourced: Txt[];
+  /** S-10 이벤트 표 — 현재 재전망(current)의 입력 행. 포함분을 날짜별로 더하면 current.daily 종가가 재현된다 */
+  cashEvents: CashEventRowView[];
   linesInWindow: { id: string; settlementDate: IsoDate; role: ApproverRole | null; status: string }[];
 }
 
 // ───────── 처리 이력 · 데이터 출처 ─────────
+
+/** 처리 이력 1행 + 표시 문구 (2026-11-14 추가). 화면은 사유 문자열을 파싱하지 않고 이 문구를 쓴다 */
+export interface AuditRowView extends AuditLogEntry {
+  /** 이전 상태 한국어 (생성 행은 null) */
+  fromText: string | null;
+  toText: string;
+  /**
+   * 한 줄 문구. 보충요청 종결은 "SCM 검토: 불필요로 종결 (승인 거절 아님)" · "SCM 검토: 보충 불가로 종결 (승인 거절 아님)" · "승인 거절",
+   * 생성은 "작업 생성: …" · "판단안 생성 ASM-…", 상태 유지는 "상태 유지: …", 재전망은 "재전망 교체 CF-v1 → CF-v2", 그 밖은 "{이전} → {이후}"
+   */
+  displayText: string;
+}
+
+/** GET /api/receivables — 회수 지연 양식(S-02)용 AR 목록 (fin_ar_aging_ms, FULL) */
+export interface ReceivableView {
+  id: string;
+  channelId: string;
+  invoiceDate: IsoDate;
+  /** 원본 만기 (ORIGINAL) */
+  originalDue: Txt;
+  /** 현재 만기 — 회수 지연 사건이 있으면 그 날짜(MOCK), 없으면 원본 */
+  currentDue: Txt;
+  overridden: boolean;
+  /** 청구 금액 amount_krw (ORIGINAL) */
+  amount: Money<'FULL'>;
+  /** 미회수 금액 outstanding_krw (ORIGINAL) — 재전망 유입에 쓰는 값 */
+  outstanding: Money<'FULL'>;
+  agingDays: number;
+  /** 원본 만기가 기준일(7/1) 이전 — 재전망 기본 제외 (A-08) */
+  overdue: boolean;
+  /** 현재 재전망 유입에 들어가는가 */
+  inForecast: boolean;
+  ref: SourceRef;
+}
 export interface AuditFilters {
   entityType?: string;
   entityId?: string;

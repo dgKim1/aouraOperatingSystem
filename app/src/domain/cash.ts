@@ -35,29 +35,69 @@ export interface CashSimResult extends CashForecastRun {
 
 type Ds = Pick<MasilDataset, 'cashDaily' | 'ar' | 'ap' | 'purchaseOrders'>;
 
-export function simulateCash(ds: Ds, opts: CashSimOptions): CashSimResult {
+/** 재전망 입력 1행 — S-10 이벤트 표의 원천. simulateCash 와 같은 함수로 만들어 표와 종가가 어긋나지 않는다 */
+export interface CashFlowItem {
+  source: 'AR' | 'AP' | 'PO';
+  /** 데이터셋 배열 위치 (원본 행 순서 — src_row = index + 1) */
+  index: number;
+  id: string;
+  /** 원본 만기 · 지급일 (AR 은 조건 변경 전 값) */
+  sourceDate: IsoDate;
+  /** 조건 변경(AR 회수일)으로 바뀐 만기 — 없으면 null */
+  overrideDate: IsoDate | null;
+  /** 재전망에 놓인 영업일 (제외면 null). A-09 주말 → 다음 영업일, A-08 민감도면 기준일 */
+  date: IsoDate | null;
+  /** 부호 있는 금액 (유입 +, 유출 −), FULL */
+  amountKrw: number;
+  /**
+   * 제외 사유: OVERDUE_EXCLUDED(기준일 이전 만기, A-08 기본) · AP_LINKED_TO_PO(po_id 가 있는 AP — 발주 대금 이중계상, 1.2) ·
+   * AFTER_HORIZON(전망 기간 밖) · null(포함)
+   */
+  excluded: 'OVERDUE_EXCLUDED' | 'AP_LINKED_TO_PO' | 'AFTER_HORIZON' | null;
+}
+
+export function cashFlowItems(ds: Omit<Ds, 'cashDaily'>, opts: Pick<CashSimOptions, 'asOf' | 'horizonEnd' | 'overdueAr' | 'overdueAp' | 'arDueOverrides'> = {}): CashFlowItem[] {
   const asOf = opts.asOf ?? AS_OF;
   const horizonEnd = opts.horizonEnd ?? addDays(asOf, 90);
   const overdueAr = opts.overdueAr ?? 'EXCLUDE';
   const overdueAp = opts.overdueAp ?? 'EXCLUDE';
+  const place = (date: IsoDate, overdue: 'EXCLUDE' | 'AS_OF'): { date: IsoDate | null; excluded: CashFlowItem['excluded'] } => {
+    let d = date;
+    if (d < asOf) {
+      if (overdue === 'EXCLUDE') return { date: null, excluded: 'OVERDUE_EXCLUDED' };
+      d = asOf;
+    }
+    d = nextBusinessDayOnOrAfter(d);
+    return d > horizonEnd ? { date: null, excluded: 'AFTER_HORIZON' } : { date: d, excluded: null };
+  };
+  const out: CashFlowItem[] = [];
+  ds.ar.forEach((ar, index) => {
+    const ov = opts.arDueOverrides?.[ar.id] ?? null;
+    out.push({ source: 'AR', index, id: ar.id, sourceDate: ar.dueDate, overrideDate: ov, ...place(ov ?? ar.dueDate, overdueAr), amountKrw: ar.outstandingKrw });
+  });
+  ds.ap.forEach((ap, index) => {
+    const base = { source: 'AP' as const, index, id: ap.id, sourceDate: ap.paymentDueDate, overrideDate: null, amountKrw: -ap.amountKrw };
+    out.push(ap.poId === null ? { ...base, ...place(ap.paymentDueDate, overdueAp) } : { ...base, date: null, excluded: 'AP_LINKED_TO_PO' });
+  });
+  ds.purchaseOrders.forEach((po, index) => {
+    out.push({ source: 'PO', index, id: po.id, sourceDate: po.paymentDueDate, overrideDate: null, ...place(po.paymentDueDate, overdueAp), amountKrw: -po.amountKrw });
+  });
+  return out;
+}
+
+export function simulateCash(ds: Ds, opts: CashSimOptions): CashSimResult {
+  const asOf = opts.asOf ?? AS_OF;
+  const horizonEnd = opts.horizonEnd ?? addDays(asOf, 90);
   const prior = ds.cashDaily.filter((d) => d.date < asOf).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
   if (!prior) throw new Error('자금일보 기초 잔액 없음');
   const opening = prior.closingBalance as number;
 
   const flows = new Map<IsoDate, number>();
-  const place = (date: IsoDate, amount: number, overdue: 'EXCLUDE' | 'AS_OF') => {
-    let d = date;
-    if (d < asOf) {
-      if (overdue === 'EXCLUDE') return;
-      d = asOf;
-    }
-    d = nextBusinessDayOnOrAfter(d);
-    flows.set(d, (flows.get(d) ?? 0) + amount);
-  };
-  for (const ar of ds.ar) place(opts.arDueOverrides?.[ar.id] ?? ar.dueDate, ar.outstandingKrw, overdueAr);
-  for (const ap of ds.ap) if (ap.poId === null) place(ap.paymentDueDate, -ap.amountKrw, overdueAp);
-  for (const po of ds.purchaseOrders) place(po.paymentDueDate, -po.amountKrw, overdueAp);
-  for (const x of opts.extraOutflows ?? []) place(x.date, -x.amountKrw, 'AS_OF');
+  for (const it of cashFlowItems(ds, opts)) if (it.excluded === null && it.date) flows.set(it.date, (flows.get(it.date) ?? 0) + it.amountKrw);
+  for (const x of opts.extraOutflows ?? []) {
+    const d = nextBusinessDayOnOrAfter(x.date < asOf ? asOf : x.date);
+    flows.set(d, (flows.get(d) ?? 0) - x.amountKrw);
+  }
 
   const daily: { date: IsoDate; closingKrw: number }[] = [];
   let bal = opening;

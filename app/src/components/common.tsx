@@ -1,7 +1,8 @@
 /** 화면 공통 조각 — 페이지 머리 · 칩 · 처리 이력 표 */
 import Link from 'next/link';
 import { HelpCircle } from 'lucide-react';
-import type { ApprovalStatus, ApproverRole, ActorRole, AuditLogEntry, LineFlag, LineStatus } from '@/domain/types';
+import type { AuditRowView } from '@/domain/api-types';
+import type { ApprovalStatus, ApproverRole, ActorRole, LineFlag, LineStatus } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import { cn } from '@/lib/utils';
 import { APPROVAL_STATUS_KO, FLAG_KO, FLAG_TONE, LINE_STATUS_KO } from './labels';
@@ -109,7 +110,8 @@ export function FlagChip({ flag }: { flag: LineFlag }) {
 
 const ACTOR_KIND_KO = { AI: 'AI', HUMAN: '사람', SYSTEM: '시스템', MOCK: '모의' } as const;
 
-export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: { rows: AuditLogEntry[]; empty?: string }) {
+/** 처리 이력 표 — 상태 문구 · 한 줄 설명은 서버의 fromText · toText · displayText 를 그대로 쓴다(사유 문자열을 해석하지 않음) */
+export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: { rows: AuditRowView[]; empty?: string }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
     <div className="overflow-x-auto">
@@ -138,10 +140,14 @@ export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: {
               <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
                 <span className="text-muted-foreground">{r.entityType}</span> <AuditEntityLink type={r.entityType} id={r.entityId} />
               </td>
-              <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
-                {r.fromStatus ?? '—'} → <strong>{r.toStatus}</strong>
-                {r.fromStatus !== null && r.fromStatus === r.toStatus && <div className="text-[10px] text-zinc-600">같은 상태 유지</div>}
-                <ReplenishmentCloseNote entry={r} />
+              <td className="py-1.5 pr-3 text-xs">
+                <span className="whitespace-nowrap">
+                  {r.fromText ?? '—'} → <strong>{r.toText}</strong>
+                </span>
+                <div className="font-mono text-[10px] text-zinc-500">
+                  {r.fromStatus ?? '—'} → {r.toStatus}
+                </div>
+                <DisplayNote entry={r} />
               </td>
               <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
                 {ROLE_KO[r.actorRole]}
@@ -167,25 +173,14 @@ export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: {
 }
 
 /**
- * FE-04 보충요청 종결 문구 3종 (A-30 · A-34) — 서버가 statusText 를 주면(BE-13) 그것을 쓰고, 없으면 이력의 이전 상태 + 사유 접두어로 나눈다.
- * DRAFT → REJECTED 사유 "불필요:" = SCM 검토 '불필요' 종결 · "보충 불가:" = SCM 검토 '보충 불가' 종결 (둘 다 승인 거절 아님)
- * SUBMITTED → REJECTED = 권한자 승인 거절
+ * 한 줄 표시 문구(서버 displayText). 보충요청 종결 3종(FE-04 · A-30 · A-34)은 색으로 구분: "승인 거절" = 빨강, SCM 검토 종결(승인 거절 아님) = 청록.
+ * 같은 상태 유지 행도 서버 문구("상태 유지: …")로 보인다.
  */
-export function replenishmentCloseText(fromStatus: string | null, toStatus: string, reason = ''): string | null {
-  if (toStatus !== 'REJECTED') return null;
-  if (fromStatus === 'DRAFT') {
-    if (reason.includes('보충 불가')) return 'SCM 검토: 보충 불가로 종결 (승인 거절 아님)';
-    return 'SCM 검토: 불필요로 종결 (승인 거절 아님)';
-  }
-  if (fromStatus === 'SUBMITTED' || fromStatus === 'INFO_REQUESTED') return '승인 거절';
-  return null;
-}
-
-function ReplenishmentCloseNote({ entry }: { entry: AuditLogEntry }) {
-  if (entry.entityType !== 'REPLENISHMENT') return null;
-  const t = replenishmentCloseText(entry.fromStatus, entry.toStatus, entry.reason);
-  if (!t) return null;
-  return <div className={cn('mt-0.5 rounded px-1 text-[10px] font-medium', t === '승인 거절' ? 'bg-red-100 text-red-900' : 'bg-cyan-50 text-cyan-900')}>{t}</div>;
+function DisplayNote({ entry }: { entry: AuditRowView }) {
+  const t = entry.displayText;
+  if (!t || t === `${entry.fromText ?? '—'} → ${entry.toText}`) return null;
+  const tone = t === '승인 거절' ? 'bg-red-100 text-red-900' : t.startsWith('SCM 검토') ? 'bg-cyan-50 text-cyan-900' : 'bg-zinc-100 text-zinc-800';
+  return <div className={cn('mt-0.5 inline-block rounded px-1 text-[10px] font-medium', tone)}>{t}</div>;
 }
 
 function AuditEntityLink({ type, id }: { type: string; id: string }) {

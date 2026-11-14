@@ -49,6 +49,9 @@ export default async function ScenariosPage() {
                   ))}
                 </ul>
                 <p className="text-xs text-zinc-600">점검은 이 프리셋의 시작 지점 기대값과 현재 상태를 비교합니다. 화면에서 사건을 더 진행했다면 ✗ 가 나오는 것이 정상일 수 있습니다.</p>
+                <p className="text-xs text-zinc-600" role="note">
+                  현재 지점만 점검합니다 — 다른 시나리오는 그 프리셋을 재생한 뒤 점검하세요. 시나리오 전체(정상 · 조건 변경 · 정보 부족/거절)의 통과 여부는 <code className="font-mono">npm run check</code> 의 시나리오 테스트가 확인합니다.
+                </p>
               </>
             )}
           </div>

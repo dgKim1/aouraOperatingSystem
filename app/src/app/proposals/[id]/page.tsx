@@ -9,7 +9,7 @@ import { ProposalTable } from '@/components/proposal/proposal-table';
 import type { LineFlag } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import { cn } from '@/lib/utils';
-import { getApprovals, getMeta, getProposal, type ProposalFilters } from '../../_data/views';
+import { getApprovals, getMeta, getProposal, getSession, type ProposalFilters } from '../../_data/views';
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -22,7 +22,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
     const v = one(sp[k]);
     if (v) filters[k] = v;
   }
-  const [v, meta, approvals] = await Promise.all([getProposal(decodeURIComponent(id), filters), getMeta(), getApprovals()]);
+  const [v, meta, approvals, { role }] = await Promise.all([getProposal(decodeURIComponent(id), filters), getMeta(), getApprovals(), getSession()]);
   if (!v) notFound();
   const approvalRefs = Object.fromEntries(approvals.map((a) => [a.request.id, { version: a.request.version, supersedesId: a.request.supersedesId, statusText: a.statusText }]));
   const focus = one(sp.q);
@@ -143,7 +143,7 @@ export default async function ProposalPage({ params, searchParams }: { params: P
           </div>
           {filters.approval && <div className="text-xs">승인요청 {filters.approval} 대상만 — {chip('approval', undefined, '해제')}</div>}
         </div>
-        {v.lines.length === 0 ? <p className="text-sm text-muted-foreground">조건에 맞는 건이 없습니다.</p> : <ProposalTable lines={v.lines} focusId={focus} aiMode={meta.aiMode} approvals={approvalRefs} />}
+        {v.lines.length === 0 ? <p className="text-sm text-muted-foreground">조건에 맞는 건이 없습니다.</p> : <ProposalTable lines={v.lines} focusId={focus} aiMode={meta.aiMode} approvals={approvalRefs} actorRole={role.actorRole} />}
         <p className="mt-3 text-xs text-zinc-600">표의 권고는 규칙 엔진 결과이며 AI 문장이 아닙니다. 판단안을 만든 뒤 [승인 요청 만들기]를 누르면 서버가 권한자 × 확정기한별로 묶어 요청을 만듭니다(A-11).</p>
       </Section>
     </div>

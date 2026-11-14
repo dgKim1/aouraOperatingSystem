@@ -20,8 +20,24 @@ type Preview = ClockResponse & { preview: true; passingDeadlines: { kind: string
 
 const KIND_KO: Record<string, string> = { CONTRACT_NOTICE: '계약 통보 기한', LINE_DEADLINE: '기안 확정기한', APPROVAL: '승인요청 원본 기한', TASK: '작업 기한' };
 
-/** 시연 문서(DEMO_SCENARIOS)의 사건 시각 — 입력 편의용 바로가기(계산값 아님) */
-const DEMO_TIMES = ['2026-07-10T14:00', '2026-07-13T10:00', '2026-07-14T11:00', '2026-07-17T09:00', '2026-07-18T00:00', '2026-07-20T09:00'];
+/**
+ * 시연 문서(DEMO_SCENARIOS)의 사건 시각 — 입력 편의용 바로가기(계산값 아님). 어느 시연의 시각인지 함께 보인다(FE-14).
+ * ① 7/10 14:00 회신 · 7/14 11:00 수령확인 / ② 7/14 10:00 회수 지연 · 7/15 15:00 재승인 / ③ 7/13 16:00 정보 부족 · 7/15 재상신 승인 · 7/16 10:00 통보 · 7/17 09:00 재통보 · 7/17 15:00 수령확인 / 7/18 00:00 기한 경과 / ④ 7/20 09:00
+ */
+const DEMO_TIMES: { t: string; tag: string }[] = [
+  { t: '2026-07-10T14:00', tag: '①③' },
+  { t: '2026-07-13T10:00', tag: '①' },
+  { t: '2026-07-13T16:00', tag: '③' },
+  { t: '2026-07-14T10:00', tag: '②' },
+  { t: '2026-07-14T11:00', tag: '①③' },
+  { t: '2026-07-15T10:00', tag: '③' },
+  { t: '2026-07-15T15:00', tag: '②' },
+  { t: '2026-07-16T10:00', tag: '③' },
+  { t: '2026-07-17T09:00', tag: '③' },
+  { t: '2026-07-17T15:00', tag: '③' },
+  { t: '2026-07-18T00:00', tag: '①②③' },
+  { t: '2026-07-20T09:00', tag: '④' },
+];
 
 const toIso = (local: string) => `${local}:00+09:00`;
 
@@ -86,9 +102,9 @@ export function ClockDialog({ simNow }: { simNow: string }) {
           </div>
           <div className="flex flex-wrap items-center gap-1 text-xs">
             <span className="text-zinc-600">시연 시각</span>
-            {DEMO_TIMES.filter((t) => t > nowLocal).map((t) => (
-              <button key={t} type="button" onClick={() => choose(t)} className="rounded border px-1.5 py-0.5 font-mono hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                {t.replace('T', ' ')}
+            {DEMO_TIMES.filter((d) => d.t > nowLocal).map((d) => (
+              <button key={d.t} type="button" onClick={() => choose(d.t)} aria-label={`${d.t.replace('T', ' ')} (시연 ${d.tag})`} className="rounded border px-1.5 py-0.5 font-mono hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                {d.t.replace('T', ' ')} <span className="font-sans text-[10px] text-zinc-600">{d.tag}</span>
               </button>
             ))}
           </div>
@@ -108,7 +124,7 @@ export function ClockDialog({ simNow }: { simNow: string }) {
                   {preview.passingDeadlines.map((d) => (
                     <li key={`${d.kind}-${d.id}`} className="flex flex-wrap gap-2">
                       <span className="w-32 text-zinc-700">{KIND_KO[d.kind] ?? d.kind}</span>
-                      <span className="font-mono">{d.id}</span>
+                      <span className="font-mono">{d.kind === 'LINE_DEADLINE' ? `${d.id} 마감 묶음` : d.id}</span>
                       <span className="font-mono">{d.deadline.length > 10 ? fmtDateTime(d.deadline) : d.deadline}</span>
                     </li>
                   ))}

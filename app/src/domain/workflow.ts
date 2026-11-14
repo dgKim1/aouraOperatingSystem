@@ -15,6 +15,7 @@ import { DomainError } from './errors';
 import { expectedPaymentDate, inventoryGate, replenishmentSuggestionsForLine } from './inventory';
 import { krw } from './money';
 import { penalty, renewalTerm } from './penalty';
+import { assertTaskActor } from './permissions';
 import { computePerformance, cpGrade, cpRefSignDiffers } from './performance';
 import { PROPOSAL_ID, seedContract, SIM_START } from './seed';
 import type {
@@ -430,7 +431,10 @@ export function receiveRenewalNotice(s: WorldState): EventResult {
   return tx.eventResult();
 }
 
-/** S1-1 확대 기안 접수 → 확인 도구 실행: 25건 RECEIVED → VALIDATED (권한 · 플래그 계산) */
+/**
+ * S1-1 확대 기안 접수 → 확인 도구 실행: 25건 RECEIVED → VALIDATED (권한 · 플래그 계산).
+ * 기안은 원본 전체로만 접수한다 — 권한 판정의 기안 총액(R-AUTH-01)이 25건 합이므로 일부만 접수하면 권한 제약이 입력 범위로 사라진다(ONTOLOGY 9-2 ①, BE-20).
+ */
 export function receiveProposal(s: WorldState, ds: MasilDataset): EventResult {
   if (s.proposal) throw new DomainError('INVALID_TRANSITION', `기안이 이미 접수됨: ${s.proposal.id}`);
   const tx = new Tx(s);
@@ -757,13 +761,20 @@ function replyReplenishment(tx: Tx, req: ApprovalRequest, reply: ApprovalReply):
 // ───────────────────────── 작업 · 외부 회신 ─────────────────────────
 
 const OPEN_TASK: Task['status'][] = ['OPEN', 'IN_PROGRESS', 'OVERDUE'];
+const CONTRACT_DECISION_SET: readonly string[] = ['RENEW_SAME', 'RENEGOTIATE', 'TERMINATE'];
 
 /** 작업 완료. 일부 작업은 다른 엔티티 전이를 일으킨다 (ONTOLOGY 3-4) */
-export function completeTask(s: WorldState, ds: MasilDataset, taskId: string, input: { resultNote?: string; payload?: Record<string, unknown> }): WorkflowResult {
+export function completeTask(s: WorldState, ds: MasilDataset, taskId: string, input: { resultNote?: string; payload?: Record<string, unknown>; actorRole?: ActorRole }): WorkflowResult {
   const tx = new Tx(s);
   const t = tx.s.tasks.find((x) => x.id === taskId);
   if (!t) throw new DomainError('NOT_FOUND', `작업 없음: ${taskId}`);
+  // 담당 역할 검사 (CLAUDE.md 규칙 10). actorRole 이 없으면 담당 역할이 한 것으로 본다 — 프리셋 재생 · 도메인 테스트용. API 는 actorRole 을 필수로 받는다
+  if (input.actorRole !== undefined) assertTaskActor(t, input.actorRole);
   if (!OPEN_TASK.includes(t.status)) throw new DomainError('INVALID_TRANSITION', `작업 ${t.id} 는 이미 ${t.status}`);
+  // BE-18 (A-35): SCM 보충 검토 작업은 회신이 보충요청 전이를 일으키므로 완료만 따로 할 수 없다 — SCM 보충 검토 회신(scmReview)으로만 닫힌다
+  if (t.ownerRole === 'SCM' && (t.type === 'REPLENISHMENT_REVIEW' || t.type === 'INFO_REQUEST')) {
+    throw new DomainError('INVALID_TRANSITION', `SCM 보충 검토 회신으로 닫습니다 (S-07 · S-09 [보충 검토 회신]) — 작업 ${t.id} 는 PATCH 로 완료할 수 없음`);
+  }
   const c = tx.s.contract;
 
   if (t.type === 'SEND_NOTICE') {
@@ -780,17 +791,28 @@ export function completeTask(s: WorldState, ds: MasilDataset, taskId: string, in
   if (t.type === 'RESUBMIT' && t.subjectType === 'CONTRACT') {
     const prev = [...tx.s.approvals].reverse().find((a) => a.subjectType === 'CONTRACT');
     if (!prev) throw new DomainError('NOT_FOUND', '이전 계약 승인요청 없음');
+    // 근거 판단안: 지정한 것, 없으면 그 시점 최신 계약 판단안 (S3-2 재판단 → S3-3 재상신). 검증은 상태 변경 전에 끝낸다
+    const asmId = input.payload?.assessmentId as string | undefined;
+    const asm = asmId !== undefined ? tx.s.assessments.find((a) => a.id === asmId) : [...tx.s.assessments].reverse().find((a) => a.subjectType === 'CONTRACT');
+    if (asmId !== undefined && !asm) throw new DomainError('NOT_FOUND', `판단안 없음: ${asmId}`);
+    if (asm && asm.subjectType !== 'CONTRACT') throw new DomainError('VALIDATION', `${asm.id} 은(는) 계약 판단안이 아님 — 재상신 근거로 쓸 수 없음`, { field: 'payload.assessmentId' });
+    const asmDecision = asm?.alternatives.find((x) => x.id === asm.recommendation.alternativeId)?.decision;
+    // 권고 결정 우선순위: ① 사람이 직접 지정 ② 근거 판단안의 권고 ③ (판단안이 없을 때만) 이전 요청의 권고안 유지
+    const explicit = input.payload?.proposedDecision as string | undefined;
+    const proposedDecision = (explicit ?? asmDecision ?? prev.proposed[0]?.decision) as ContractDecision | undefined;
+    if (!proposedDecision || !CONTRACT_DECISION_SET.includes(proposedDecision)) {
+      throw new DomainError('VALIDATION', `재상신할 계약 결정이 없음 (${explicit ?? asm?.recommendation.alternativeId ?? '판단안 없음'})`, { field: 'payload.proposedDecision' });
+    }
     tx.setTask(t, 'DONE', t.ownerRole, 'HUMAN', '재상신', input.resultNote ?? '');
     if (prev.status === 'PENDING') tx.setApproval(prev, 'SUPERSEDED', 'SYSTEM', 'SYSTEM', ['R-AUTH-06'], '재상신으로 대체');
     const r = routeContract(c);
-    const proposedDecision = (input.payload?.proposedDecision as ContractDecision | undefined) ?? (prev.proposed[0]?.decision as ContractDecision);
     tx.addApproval({
       subjectType: 'CONTRACT',
       subjectIds: [c.id],
       requiredRole: r.requiredRole,
       alsoReportTo: r.alsoReportTo,
       routingReasons: r.reasons,
-      assessmentId: (input.payload?.assessmentId as string | undefined) ?? null,
+      assessmentId: asm?.id ?? null,
       proposed: [{ itemId: c.id, decision: proposedDecision }],
       internalDueAt: internalDueAt('CONTRACT_APPROVAL', c.noticeDeadline),
       hardDeadline: c.noticeDeadline,
@@ -813,6 +835,7 @@ export function startTask(s: WorldState, taskId: string, actorRole: ActorRole): 
   const tx = new Tx(s);
   const t = tx.s.tasks.find((x) => x.id === taskId);
   if (!t) throw new DomainError('NOT_FOUND', `작업 없음: ${taskId}`);
+  assertTaskActor(t, actorRole);
   if (t.status !== 'OPEN' && t.status !== 'OVERDUE') throw new DomainError('INVALID_TRANSITION', `작업 ${t.id}: ${t.status} → IN_PROGRESS 전이는 허용되지 않음`);
   tx.setTask(t, 'IN_PROGRESS', actorRole, 'HUMAN', '작업 시작');
   return tx.result();
@@ -824,6 +847,7 @@ export function cancelTask(s: WorldState, taskId: string, input: { actorRole: Ac
   const tx = new Tx(s);
   const t = tx.s.tasks.find((x) => x.id === taskId);
   if (!t) throw new DomainError('NOT_FOUND', `작업 없음: ${taskId}`);
+  assertTaskActor(t, input.actorRole);
   if (!OPEN_TASK.includes(t.status)) throw new DomainError('INVALID_TRANSITION', `작업 ${t.id} 는 이미 ${t.status}`);
   tx.setTask(t, 'CANCELLED', input.actorRole, 'HUMAN', `작업 취소: ${input.reason}`, input.reason);
   return tx.result();

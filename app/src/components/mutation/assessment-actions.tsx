@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import { Bot, Send } from 'lucide-react';
 import type { ApprovalCreateResponse, AssessmentCreateResponse } from '@/domain/api-types';
-import type { SubjectType } from '@/domain/types';
+import type { ActorRole, SubjectType } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import { Button } from '@/components/ui/button';
 import { useApiAction } from './api-client';
@@ -25,6 +25,7 @@ export function AssessButton({
   variant = 'default',
   disabledReason,
   showRequestNext = true,
+  actorRole,
 }: {
   subjectType: SubjectType;
   subjectIds: string[];
@@ -33,8 +34,11 @@ export function AssessButton({
   variant?: 'default' | 'outline';
   disabledReason?: string | null;
   showRequestNext?: boolean;
+  /** 현재 화면 역할. 에이전시(모의)는 외부 상대라 판단안 버튼을 숨긴다 (ONTOLOGY 1-3 쓰기 행위별 허용 역할, FE-14) */
+  actorRole?: ActorRole;
 }) {
   const a = useApiAction<AssessmentCreateResponse>();
+  if (actorRole === 'AGENCY') return <AgencyNote what="판단안" />;
   const disabled = a.pending || subjectIds.length === 0 || !!disabledReason;
   return (
     <div className="space-y-2">
@@ -80,8 +84,9 @@ export function AssessButton({
   );
 }
 
-export function RequestApprovalButton({ assessmentId, disabledReason, label = '승인 요청 만들기' }: { assessmentId: string; disabledReason?: string | null; label?: string }) {
+export function RequestApprovalButton({ assessmentId, disabledReason, label = '승인 요청 만들기', actorRole }: { assessmentId: string; disabledReason?: string | null; label?: string; actorRole?: ActorRole }) {
   const r = useApiAction<ApprovalCreateResponse>();
+  if (actorRole === 'AGENCY') return <AgencyNote what="상신" />;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -112,4 +117,9 @@ export function RequestApprovalButton({ assessmentId, disabledReason, label = '�
       )}
     </div>
   );
+}
+
+/** 외부 상대(에이전시, 모의) 역할에서 내부 판단 · 상신 버튼 대신 보이는 안내 */
+function AgencyNote({ what }: { what: string }) {
+  return <p className="text-xs text-zinc-600">에이전시(모의)는 외부 상대라 {what}을(를) 만들지 않습니다 — 내부 역할로 바꾸면 보입니다.</p>;
 }

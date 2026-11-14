@@ -1,7 +1,8 @@
 /**
  * S-10 자금 재전망 · covenant — 하회 예상 구간을 특정해 승인 주체를 정하고, 재무팀 공식 전망(주장)과 한 차트 · 한 비교표로 대조한다(FE-06).
  * 판단(권한 · 하회 구간 · 경고 · 권고)은 재전망만 쓴다. 공식 전망 숫자는 차트 · 비교표에만 `주장` 배지와 함께 둔다(UI-03).
- * 값은 GET /api/analytics/cash 응답 그대로. "② 이후 변경" 표시는 v1 대조 응답과 현재 대조 응답의 같은 주 값이 같은지 비교만 한다.
+ * 값은 GET /api/analytics/cash 응답 그대로. "② 이후 변경"은 서버의 changedFromV1 · v1Recalculated · v1BelowDays, 차이 설명은 diffNotesSourced,
+ * 재전망 입력 표는 cashEvents(포함 · 제외 사유 · 원본 파일/행)를 그대로 쓴다 — 화면에서 v1 을 다시 조회해 비교하지 않는다.
  */
 import Link from 'next/link';
 import { InlineWarning } from '@/components/alerts/alert-item';
@@ -9,7 +10,7 @@ import { SourceBadgeStatic } from '@/components/badges/source-badge';
 import { MoneyValue, TextValue, UnknownChip } from '@/components/badges/values';
 import { CashLine } from '@/components/charts/cash-line';
 import { PageHeader, RoleChip, Section } from '@/components/common';
-import type { CashRunView } from '@/domain/api-types';
+import type { CashEventRowView, CashRunView } from '@/domain/api-types';
 import { cn } from '@/lib/utils';
 import { getCash } from '../../_data/views';
 
@@ -37,12 +38,6 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
   const sensitivity = sp.sensitivity === '1';
   const v = await getCash({ version: 'current', sensitivity });
   const changed = v.current.id !== v.v1.id;
-  const v1cmp = changed ? await getCash({ version: 'v1' }) : null;
-  const v1ByWeek = new Map((v1cmp?.officialComparison ?? []).map((r) => [r.week, r]));
-  const rowChanged = (week: string, recalculated: number, belowDays: number) => {
-    const o = v1ByWeek.get(week);
-    return !!o && (o.recalculated.value !== recalculated || o.belowDays !== belowDays);
-  };
 
   return (
     <div className="space-y-4">
@@ -122,7 +117,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
             <tbody>
               {v.officialComparison.map((r) => {
                 const largest = v.largestGap?.week === r.week;
-                const chg = changed && rowChanged(r.week, r.recalculated.value, r.belowDays);
+                const chg = r.changedFromV1;
                 return (
                   <tr key={r.week} className={cn('border-b align-top last:border-0', largest && 'bg-amber-50 font-semibold ring-2 ring-amber-500 ring-inset', r.belowThreshold && !largest && 'bg-red-50/50')}>
                     <td className="p-2">
@@ -140,9 +135,9 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
                     </td>
                     <td className="p-2">
                       <MoneyValue m={r.recalculated} strong={largest} />
-                      {chg && v1ByWeek.get(r.week) && v1ByWeek.get(r.week)!.recalculated.value !== r.recalculated.value && (
+                      {chg && r.v1Recalculated && (
                         <div className="text-xs font-normal text-zinc-600">
-                          이전 {v.v1.id}: <MoneyValue m={v1ByWeek.get(r.week)!.recalculated} hideScale className="line-through decoration-zinc-400" />
+                          이전 {v.v1.id}: <MoneyValue m={r.v1Recalculated} hideScale className="line-through decoration-zinc-400" />
                         </div>
                       )}
                     </td>
@@ -151,7 +146,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
                     </td>
                     <td className="p-2">
                       {r.belowThreshold ? <strong className="text-red-800">하회 {r.belowDays}영업일</strong> : <span className="text-zinc-600">없음</span>}
-                      {chg && v1ByWeek.get(r.week) && <div className="text-xs font-normal text-zinc-600">이전 {v1ByWeek.get(r.week)!.belowThreshold ? `하회 ${v1ByWeek.get(r.week)!.belowDays}영업일` : '없음'}</div>}
+                      {chg && r.v1BelowDays !== null && <div className="text-xs font-normal text-zinc-600">이전 {v.v1.id}: {r.v1BelowDays > 0 ? `하회 ${r.v1BelowDays}영업일` : '없음'}</div>}
                     </td>
                   </tr>
                 );
@@ -174,9 +169,22 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
             </ul>
           </div>
         )}
-        <p className="mt-2 text-xs text-zinc-600">
-          재전망은 원본 스케줄(AR · AP(po_id=&apos;NONE&apos;) · 발주)만 쓰므로 9/6 이후 예정 현금흐름이 없습니다. 공식 전망에는 매주 유입 · 유출이 있어 9월 차이에는 기준일 이후 새로 생길 거래가 섞여 있을 수 있습니다 — 원인 미확인. 주 대응 기준(week = 그 월요일에 끝나는 주)은 원본 정의가 없어 가정 A-32 입니다. 공식 전망 열은 재무팀 파일 그대로라 조건 변경 후에도 바뀌지 않습니다.
-        </p>
+        {v.diffNotesSourced.length > 0 && (
+          <div className="mt-3">
+            <h4 className="mb-1 text-xs font-semibold">공식 전망과 다른 이유 (출처별 — 원인 추정은 원본근거해석)</h4>
+            <ul className="space-y-1 text-xs">
+              {v.diffNotesSourced.map((n, i) => (
+                <li key={i}>
+                  <TextValue t={n} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Section>
+
+      <Section title={`재전망 입력 — 현금 유입 · 유출 (${v.current.id} · 포함 ${v.cashEvents.filter((e) => e.included).length}건 · 제외 ${v.cashEvents.filter((e) => !e.included).length}건)`} id="events">
+        <CashEvents rows={v.cashEvents} />
       </Section>
 
       <Section title={`하회 구간에 집행일이 걸린 기안 (${v.linesInWindow.length}건)`} id="lines">
@@ -224,5 +232,53 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
         </div>
       </Section>
     </div>
+  );
+}
+
+const KIND_KO: Record<CashEventRowView['kind'], string> = { AR_INFLOW: 'AR 회수', AP_OUTFLOW: 'AP 지급', PO_PAYMENT: '발주 대금' };
+
+/** S-10 이벤트 표 — 날짜 · 항목 · 금액 · 출처. 제외 행은 사유와 함께(숨기지 않음). 값은 서버 cashEvents 그대로 */
+function CashEvents({ rows }: { rows: CashEventRowView[] }) {
+  if (rows.length === 0) return <p className="text-sm text-muted-foreground">입력 행이 없습니다.</p>;
+  const sorted = [...rows].sort((a, b) => (a.date ?? a.sourceDate).localeCompare(b.date ?? b.sourceDate) || a.id.localeCompare(b.id));
+  return (
+    <details open={rows.length <= 40}>
+      <summary className="cursor-pointer text-xs text-zinc-700 underline underline-offset-2">표 펼치기 · 접기 ({rows.length}행) — 포함 행을 날짜별로 더하면 일별 종가가 재현됩니다</summary>
+      <div className="mt-2 max-h-[28rem] overflow-auto">
+        <table className="w-full min-w-[900px] text-sm">
+          <caption className="sr-only">재전망에 들어간 현금 이벤트와 제외된 이벤트(사유 포함)</caption>
+          <thead className="sticky top-0 bg-white text-left text-xs text-zinc-600">
+            <tr className="border-b">
+              <th className="p-2 font-medium">재전망 날짜</th>
+              <th className="p-2 font-medium">원본 날짜</th>
+              <th className="p-2 font-medium">종류 · 항목</th>
+              <th className="p-2 font-medium">방향 · 금액</th>
+              <th className="p-2 font-medium">출처</th>
+              <th className="p-2 font-medium">포함 여부</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((e) => (
+              <tr key={e.id} className={cn('border-b align-top last:border-0', !e.included && 'bg-zinc-50 text-zinc-600')}>
+                <td className="p-2 font-mono text-xs">{e.date ?? '—'}</td>
+                <td className="p-2 font-mono text-xs">{e.sourceDate}</td>
+                <td className="p-2 text-xs">
+                  <span className="text-zinc-600">{KIND_KO[e.kind]}</span> {e.item}
+                </td>
+                <td className="p-2">
+                  <span className={cn('mr-1 text-xs font-semibold', e.direction === 'IN' ? 'text-emerald-800' : 'text-red-800')}>{e.direction === 'IN' ? '유입 +' : '유출 −'}</span>
+                  <MoneyValue m={e.amount} hideScale />
+                </td>
+                <td className="p-2 text-xs">
+                  <SourceBadgeStatic label={e.label} /> <span className="font-mono text-[11px]">{e.ref.file.split('/').pop()}{e.ref.row ? ` #${e.ref.row}` : ''}</span>
+                  {e.assumptionIds.length > 0 && <span className="ml-1 text-[11px]">{e.assumptionIds.join(' · ')}</span>}
+                </td>
+                <td className="p-2 text-xs">{e.included ? '포함' : <span>제외 — {e.excludedReason}</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }

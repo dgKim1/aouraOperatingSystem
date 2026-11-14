@@ -3,6 +3,9 @@
  * S-07 작업 행동 — [시작] · [완료](유형별 추가 입력) · [취소](사유) → PATCH /api/tasks/:id, 결과 패널 + 서버 재조회 (UI-05).
  * SCM 역할의 보충 검토 · SCM 정보 요청 작업은 [보충 검토 회신](COUNTERPARTY_REPLY, 승인 아님 — FE-01).
  * 에이전시(모의) 역할은 계약 통보 수령확인 · 정보 요청 작업에 [에이전시 회신].
+ * 모든 PATCH 에 현재 역할(actorRole)을 싣는다 — 서버가 담당 역할(ownerRole)만 허용하고 그 밖은 422 FORBIDDEN_ROLE (BE-17, A-35).
+ * SCM 보충 검토 · SCM 정보 요청 작업은 PATCH 완료가 409 라([완료] 없음, BE-18) [보충 검토 회신]으로만 닫는다.
+ * 담당이 아닌 역할은 [권한 검증 확인]으로 같은 요청을 보내 서버의 422 문구를 그대로 볼 수 있다(상태 불변).
  */
 import { useState } from 'react';
 import type { TaskPatchResponse, TaskView } from '@/domain/api-types';
@@ -26,6 +29,7 @@ export function TaskActions({ task, role, roleLabel, assessments, today }: { tas
   const [asm, setAsm] = useState(assessments[0]?.id ?? '');
   const [err, setErr] = useState<string | null>(null);
   const act = useApiAction<TaskPatchResponse>();
+  const probe = useApiAction<TaskPatchResponse>();
   const mine = task.ownerRole === role;
   const open = task.status === 'OPEN' || task.status === 'IN_PROGRESS' || task.status === 'OVERDUE';
   const scmReview = role === 'SCM' && task.ownerRole === 'SCM' && (task.type === 'REPLENISHMENT_REVIEW' || task.type === 'INFO_REQUEST');
@@ -87,11 +91,23 @@ export function TaskActions({ task, role, roleLabel, assessments, today }: { tas
         )}
       </div>
       {!mine && !scmReview && !agencyReply && (
-        <p className="text-[11px] text-zinc-600">
-          담당 {ROLE_KO[task.ownerRole]} 만 처리 (현재 {roleLabel})
-        </p>
+        <div className="space-y-1">
+          <p className="text-[11px] text-zinc-600">
+            담당 {ROLE_KO[task.ownerRole]} 만 처리 (현재 {roleLabel})
+          </p>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={probe.pending}
+            onClick={() => probe.run(`/api/tasks/${encodeURIComponent(task.id)}`, 'PATCH', { actorRole: role, status: 'IN_PROGRESS' })}
+            title="서버가 역할을 다시 판정합니다. 거부되면 문구를 그대로 보여주고 상태는 바뀌지 않습니다."
+          >
+            권한 검증 확인 — {roleLabel}(으)로 시작 시도
+          </Button>
+          {probe.error && <ApiErrorBox error={probe.error} />}
+        </div>
       )}
-      {scmReview && <p className="text-[11px] text-cyan-900">SCM 검토 회신은 승인이 아닙니다 — 보충 필요 여부 · 입고 예정일을 알립니다.</p>}
+      {scmReview && <p className="text-[11px] text-cyan-900">SCM 검토 회신은 승인이 아닙니다 — 보충 필요 여부 · 입고 예정일을 알립니다. 이 작업은 [완료]가 아니라 [보충 검토 회신]으로 닫습니다.</p>}
 
       {mode === 'done' && (
         <form onSubmit={complete} className="space-y-1.5 rounded border bg-zinc-50 p-2" aria-label={`${task.id} 완료`}>

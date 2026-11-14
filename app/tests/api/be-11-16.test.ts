@@ -20,11 +20,11 @@ const gaps = async () => (await call<RegistryView>(registry.GET())).body.gaps;
 const gap = (g: RegistryView['gaps'], id: string) => g.find((x) => x.id === id)!;
 const reply = (payload: unknown) => call<EventResponse>(events.POST(req('', 'POST', { type: 'COUNTERPARTY_REPLY', payload })));
 
-describe('BE-11 가정 목록 A-01~A-34', () => {
+describe('BE-11 · BE-19 가정 목록 A-01~A-36', () => {
   beforeEach(() => makeService());
-  it('data-registry 가정 34개, A-32 · A-33 · A-34 포함', async () => {
+  it('data-registry 가정 36개, A-32 ~ A-36 포함', async () => {
     const r = await call<RegistryView>(registry.GET());
-    expect(r.body.assumptions.map((a) => a.id)).toEqual(Array.from({ length: 34 }, (_, i) => `A-${String(i + 1).padStart(2, '0')}`));
+    expect(r.body.assumptions.map((a) => a.id)).toEqual(Array.from({ length: 36 }, (_, i) => `A-${String(i + 1).padStart(2, '0')}`));
   });
 });
 

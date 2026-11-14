@@ -9,6 +9,8 @@ import type {
   ApprovalItemView,
   ApprovalView,
   AssessmentSummary,
+  AuditRowView,
+  CashEventRowView,
   AssessmentView,
   CashRunView,
   CashView,
@@ -27,13 +29,15 @@ import type {
   PenaltyView,
   ProposalFilters,
   ProposalView,
+  ReceivableView,
   ReferenceFlagView,
   RegistryView,
+  ReplenishmentRowView,
   Severity,
   TaskView,
   TimelineItem,
 } from '@/domain/api-types';
-import { compareOfficialForecast, largestOfficialGap, simulateCash, type CashSimResult } from '@/domain/cash';
+import { AS_OF, cashFlowItems, compareOfficialForecast, largestOfficialGap, simulateCash, type CashSimResult } from '@/domain/cash';
 import type { MasilDataset } from '@/domain/dataset';
 import { kstDate } from '@/domain/dates';
 import { daysLeft, deadlineLevel, decisionNeededBy, internalDueAt } from '@/domain/deadline';
@@ -48,7 +52,7 @@ import { validateAssessmentNumbers } from '@/domain/provenance';
 import { ASSUMPTIONS, CLAIMS, GAPS, INCONSISTENCIES } from '@/domain/registry';
 import { CONTRACT_REFS, PROPOSAL_ID } from '@/domain/seed';
 import { CASH_REFS, INV_REFS, money, num, PERF_ASSUMPTIONS, PERF_REFS, txt } from '@/domain/sourced';
-import type { ActorRole, ApprovalRequest, ApproverRole, Assessment, AuditLogEntry, CampaignPerformance, ExpansionLine, LineFlag, SourceRef, Task } from '@/domain/types';
+import type { ActorRole, ApprovalRequest, ApproverRole, Assessment, AuditLogEntry, CampaignPerformance, ExpansionLine, LineFlag, ReplenishmentRequest, SourceRef, Task } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import * as wf from '@/domain/workflow';
 
@@ -83,6 +87,34 @@ const proposalId = (s: S) => s.proposal?.id ?? PROPOSAL_ID;
 
 // ───────────────────────── 경고 (SCREEN_SPEC 0-3) ─────────────────────────
 
+/**
+ * 자동 갱신 위험 경고의 「다음 행동」 — 계약 상태(3-1 전이표)에서 기한 전에 실제로 할 수 있는 다음 한 걸음.
+ * 문구 · 링크만 고른다(판정 아님). 재검토 중에는 열린 작업 유형만 나열한다.
+ */
+function autoRenewalNextAction(s: S): AlertView['nextAction'] {
+  const c = s.contract;
+  const open = (type: Task['type']) => s.tasks.some((t) => t.subjectType === 'CONTRACT' && t.type === type && ['OPEN', 'IN_PROGRESS', 'OVERDUE'].includes(t.status));
+  switch (c.status) {
+    case 'ACTIVE':
+      return { text: '계약 담당: 사건 입력에서 갱신 통보 접수', href: '/events', role: 'CONTRACT_OFFICER' };
+    case 'UNDER_REVIEW':
+      return { text: '계약 담당: 판단안 만들기 → 승인 요청 상신', href: `/contracts/${c.id}`, role: 'CONTRACT_OFFICER' };
+    case 'PENDING_APPROVAL': {
+      const req = [...s.approvals].reverse().find((a) => a.subjectType === 'CONTRACT' && a.status === 'PENDING');
+      const role = req?.requiredRole ?? wf.contractRouting(s).requiredRole;
+      return { text: `${roleKo(role)} 승인 회신 → 계약 담당 통보 발송`, href: req ? `/approvals/${req.id}` : `/contracts/${c.id}`, role };
+    }
+    case 'REVIEW_BEFORE_DEADLINE': {
+      const steps = [open('INFO_REQUEST') ? '정보 요청 회신 확인' : null, open('REVIEW_BEFORE_DEADLINE') ? '기한 전 재검토' : null, '재상신'].filter((x): x is string => !!x);
+      return { text: `계약 담당: ${steps.join(' · ')} 작업 → 그룹 CEO/이사회 재승인`, href: '/tasks', role: 'CONTRACT_OFFICER' };
+    }
+    case 'NOTICE_PENDING':
+      return { text: '계약 담당: 통보 발송 작업 완료 (기한 전)', href: '/tasks', role: 'CONTRACT_OFFICER' };
+    default:
+      return { text: '전속계약 상세에서 상태 확인', href: `/contracts/${c.id}`, role: 'CONTRACT_OFFICER' };
+  }
+}
+
 const SEVERITY_ORDER: Record<Severity, number> = { DANGER: 0, WARNING: 1, INFO: 2 };
 const levelToSeverity = (level: string): Severity => (level === 'DANGER' || level === 'PASSED' ? 'DANGER' : level === 'WARNING' ? 'WARNING' : 'INFO');
 
@@ -106,7 +138,7 @@ export function buildAlerts(s: S, ds: MasilDataset): AlertView[] {
       severity: 'DANGER',
       title: `통보 없이 ${md(c.noticeDeadline)} 이 지나면 연 ${fmt(c.fixedFeeAnnualKrw)}원 계약이 권한 승인 없이 체결됩니다`,
       detail: `계약 상태: ${CONTRACT_STATUS_KO[c.status]} · 남은 ${cDays}일. 미통보 자동 갱신도 체결로 본다 (정책).`,
-      nextAction: { text: '그룹 CEO/이사회 승인 → 계약 담당 통보 발송', href: `/contracts/${c.id}`, role: 'GROUP_CEO_BOARD' },
+      nextAction: autoRenewalNextAction(s),
       ruleIds: ['R-DL-02', 'R-AUTH-02'],
       label: 'ORIGINAL',
       subjectIds: [c.id],
@@ -406,7 +438,7 @@ export function overview(s: S, ds: MasilDataset): OverviewView {
       overdue: [...byRole.values()].reduce((a, r) => a + r.overdue, 0),
       byRole: [...byRole].map(([role, v]) => ({ role, ...v })),
     },
-    recentAudit: [...s.audit].reverse().slice(0, 5),
+    recentAudit: auditRows(s, [...s.audit].reverse().slice(0, 5)),
     received: s.events.some((e) => e.type === 'RENEWAL_NOTICE_RECEIVED' || e.type === 'EXPANSION_PROPOSAL_RECEIVED'),
     poPaymentTotal: poPaymentTotal(ds),
   };
@@ -556,7 +588,7 @@ export function contractView(s: S, ds: MasilDataset, id: string, terminateOn?: s
     performance: perf,
     notices: s.notices,
     receipts: s.receipts,
-    audit: s.audit.filter((a) => a.entityId === c.id || (a.entityType === 'APPROVAL_REQUEST' && s.approvals.some((x) => x.id === a.entityId && x.subjectType === 'CONTRACT')) || asms.some((x) => x.id === a.entityId)),
+    audit: auditRows(s, s.audit.filter((a) => a.entityId === c.id || (a.entityType === 'APPROVAL_REQUEST' && s.approvals.some((x) => x.id === a.entityId && x.subjectType === 'CONTRACT')) || asms.some((x) => x.id === a.entityId))),
     approvals: s.approvals.filter((a) => a.subjectType === 'CONTRACT'),
     consequences: {
       renewed: cons.renewed,
@@ -752,7 +784,7 @@ export function approvalView(s: S, ds: MasilDataset, a: ApprovalRequest, alerts?
     supersededBy: s.approvals.find((x) => x.supersedesId === a.id)?.id ?? null,
     alerts: (alerts ?? buildAlerts(s, ds)).filter((al) => al.subjectIds.some((x) => ids.has(x))),
     replies: s.replies.filter((r) => r.requestId === a.id).map((r) => ({ id: r.id, respondentRole: r.respondentRole, outcome: r.outcome, reason: r.reason, simAt: r.simAt, label: r.label })),
-    audit: s.audit.filter((x) => ids.has(x.entityId)),
+    audit: auditRows(s, s.audit.filter((x) => ids.has(x.entityId))),
     contractDecisionAllowed: a.subjectType === 'CONTRACT' ? ['RENEW_SAME', 'RENEGOTIATE', 'TERMINATE'] : null,
   };
 }
@@ -785,8 +817,58 @@ export function tasksView(s: S, f: { role?: string; status?: string } = {}): Tas
 
 // ───────────────────────── 처리 이력 (S-11) ─────────────────────────
 
-export function auditView(s: S, f: { entityType?: string; entityId?: string; actorKind?: string } = {}): AuditLogEntry[] {
-  return [...s.audit].filter((a) => (!f.entityType || a.entityType === f.entityType) && (!f.entityId || a.entityId === f.entityId) && (!f.actorKind || a.actorKind === f.actorKind)).reverse();
+export function auditView(s: S, f: { entityType?: string; entityId?: string; actorKind?: string } = {}): AuditRowView[] {
+  return auditRows(s, [...s.audit].filter((a) => (!f.entityType || a.entityType === f.entityType) && (!f.entityId || a.entityId === f.entityId) && (!f.actorKind || a.actorKind === f.actorKind)).reverse());
+}
+
+const REPLENISHMENT_STATUS_KO: Record<string, string> = { DRAFT: '초안 (SCM 검토 대기)', SUBMITTED: '상신 (승인 대기)', APPROVED: '승인', REJECTED: '종결', INFO_REQUESTED: '정보 요청' };
+
+function statusKo(entityType: string, st: string): string {
+  const m: Record<string, Record<string, string>> = {
+    CONTRACT: CONTRACT_STATUS_KO,
+    EXPANSION_LINE: LINE_STATUS_KO,
+    APPROVAL_REQUEST: APPROVAL_STATUS_KO,
+    TASK: TASK_STATUS_KO,
+    REPLENISHMENT: REPLENISHMENT_STATUS_KO,
+    ASSESSMENT: { CREATED: '생성' },
+  };
+  return m[entityType]?.[st] ?? st;
+}
+
+/**
+ * 이력 1행의 표시 문구 (화면이 사유 문자열을 파싱하지 않게 — FE-04 · BE-13 의 이력판).
+ * 보충요청 종결은 엔티티의 closedBy(구조화된 종결 경로, DD-034)로 정한다: DRAFT → REJECTED 는 SCM 검토 종결, SUBMITTED/INFO_REQUESTED → REJECTED 는 승인 거절.
+ */
+export function auditRow(s: S, e: AuditLogEntry): AuditRowView {
+  const fromText = e.fromStatus === null ? null : statusKo(e.entityType, e.fromStatus);
+  let toText = statusKo(e.entityType, e.toStatus);
+  let displayText: string;
+  if (e.entityType === 'CASH_FORECAST') {
+    displayText = `재전망 교체 ${e.fromStatus ?? '-'} → ${e.toStatus}`;
+  } else if (e.entityType === 'ASSESSMENT') {
+    displayText = `판단안 생성 ${e.entityId}`;
+  } else if (e.entityType === 'REPLENISHMENT' && e.toStatus === 'REJECTED') {
+    const r = s.replenishments.find((x) => x.id === e.entityId);
+    const closedBy = e.fromStatus === 'DRAFT' ? (r?.closedBy ?? 'SCM_NOT_NEEDED') : 'APPROVER';
+    toText = replenishmentStatusText({ status: 'REJECTED', closedBy });
+    displayText = toText;
+  } else if (e.fromStatus === null) {
+    if (e.entityType === 'TASK') {
+      const t = s.tasks.find((x) => x.id === e.entityId);
+      displayText = `작업 생성: ${t ? TASK_TYPE_KO[t.type] : e.entityId}`;
+    } else {
+      displayText = `생성: ${toText}`;
+    }
+  } else if (e.fromStatus === e.toStatus) {
+    displayText = `상태 유지: ${toText}`;
+  } else {
+    displayText = `${fromText} → ${toText}`;
+  }
+  return { ...e, fromText, toText, displayText };
+}
+
+export function auditRows(s: S, rows: readonly AuditLogEntry[]): AuditRowView[] {
+  return rows.map((e) => auditRow(s, e));
 }
 
 // ───────────────────────── 재고 (S-09) ─────────────────────────
@@ -834,7 +916,17 @@ export function inventoryView(s: S, ds: MasilDataset): InventoryView {
         })),
       };
     });
-  return { rows, suggestions, replenishments: s.replenishments.map((r) => ({ ...r, statusText: replenishmentStatusText(r) })), simDate: today };
+  return { rows, suggestions, replenishments: s.replenishments.map(replenishmentRow), simDate: today };
+}
+
+export function replenishmentRow(r: ReplenishmentRequest): ReplenishmentRowView {
+  return {
+    ...r,
+    statusText: replenishmentStatusText(r),
+    amount: money('FULL', r.amountKrw, 'AGGREGATED', [{ file: F.purchaseOrders, column: 'amount_krw' }, { file: F.sku, column: 'moq', rowKey: r.skuId }], `finalQty ${fmt(r.finalQty)} × 단가 ${fmt(r.unitCostKrw)}`, ['A-17', 'A-18']),
+    unitCost: money('FULL', r.unitCostKrw, 'AGGREGATED', [{ file: F.purchaseOrders, column: 'amount_krw' }, { file: F.purchaseOrders, column: 'order_qty' }], '기발주 단가 = amount_krw / order_qty'),
+    paymentDate: txt(r.expectedPaymentDate, 'ASSUMPTION', [], '초안 생성일(기준시각) + 25일', ['A-19']),
+  };
 }
 
 // ───────────────────────── 자금 (S-10) ─────────────────────────
@@ -855,6 +947,8 @@ export function cashView(s: S, ds: MasilDataset, opts: { sensitivity?: boolean; 
   // BE-10: 대조 기준 버전 — 'v1' 이면 최초 재전망, 그 외(current · v2 · 현재 id)는 현재 재전망
   const cmpRun = opts.version === 'v1' || opts.version === v1.id ? v1 : cur;
   const rows = compareOfficialForecast(cmpRun, ds.officialForecast);
+  // 「② 이후 변경」: v1 과 같은 주의 재전망 값 · 하회 영업일 수 비교 (v1 기준 대조면 비교하지 않음)
+  const v1Rows = cmpRun === v1 ? null : new Map(compareOfficialForecast(v1, ds.officialForecast).map((r) => [r.week, r]));
   const A32 = ['A-08', 'A-09', 'A-32'];
   const officialRef = (week: string): SourceRef[] => [{ file: F.cashForecast, column: 'projected_closing_krw', rowKey: week }];
   const gap = largestOfficialGap(rows);
@@ -880,6 +974,15 @@ export function cashView(s: S, ds: MasilDataset, opts: { sensitivity?: boolean; 
       diff: money('FULL', r.diff, 'AGGREGATED', [...CASH_REFS, ...officialRef(r.week)], '재전망 − 공식 전망', A32),
       belowThreshold: r.belowThreshold,
       belowDays: r.belowDays,
+      ...(() => {
+        const o = v1Rows?.get(r.week);
+        const changed = !!o && (o.recalculated !== r.recalculated || o.belowDays !== r.belowDays);
+        return {
+          changedFromV1: changed,
+          v1Recalculated: changed ? money('FULL', o!.recalculated, 'AGGREGATED', CASH_REFS, `최초 재전망 ${v1.id} 의 ${r.week} 종가 (A-32 주간 대응)`, A32) : null,
+          v1BelowDays: changed ? o!.belowDays : null,
+        };
+      })(),
     })),
     largestGap: gap
       ? {
@@ -896,8 +999,73 @@ export function cashView(s: S, ds: MasilDataset, opts: { sensitivity?: boolean; 
       `차이 원인(추정): 기발주 ${ds.purchaseOrders.length}건 대금 ${fmt(ds.purchaseOrders.reduce((a, p) => a + p.amountKrw, 0))}원 일괄 지급이 공식 전망에 보이지 않음 — 원인 확정은 미확인`,
       '기안 요청액(표본)은 이 전망에 포함하지 않음 (R-CASH-04)',
     ],
+    diffNotesSourced: [
+      txt(`재무팀 공식 전망: 30억 하회 없음 (주간 최저 ${fmt(officialMin)}원)`, 'CLAIM', [{ file: F.cashForecast, column: 'projected_closing_krw' }], '공식 전망 13주 종가 최솟값 — 주장, 판단 입력 아님'),
+      txt(`재전망 ${cur.id}: 하회 구간 ${cur.breachWindows.map((w) => `${w.start}~${w.end}`).join(', ') || '없음'}`, 'AGGREGATED', CASH_REFS, '매 영업일 종가 < 30억 구간 (R-CASH-02)', cur.assumptionIds),
+      txt(`차이 원인(추정): 기발주 ${ds.purchaseOrders.length}건 대금 ${fmt(poTotal)}원 일괄 지급이 공식 전망 유출에 보이지 않음 — 원인 미확인`, 'INTERPRETED', [{ file: F.purchaseOrders, column: 'amount_krw' }, { file: F.cashForecast, column: 'projected_outflow_krw' }], '기발주 지급일과 공식 주간 유출 규모 대조'),
+      txt('기안 요청액(표본)은 이 전망에 포함하지 않음 (R-CASH-04)', 'ORIGINAL', [{ file: DOC_FILES.meetingNotes, note: '본 기안은 자금 전망 유출 산식에 포함되지 않는다' }]),
+    ],
+    cashEvents: cashEvents(ds, cur.options.arDueOverrides ?? {}),
     linesInWindow: s.lines.filter((l) => l.flags.includes('IN_COVENANT_WINDOW')).map((l) => ({ id: l.id, settlementDate: l.settlementDate, role: l.routing?.requiredRole ?? null, status: LINE_STATUS_KO[l.status] })),
   };
+}
+
+/** S-10 이벤트 표 — 재전망 입력 행 (domain cashFlowItems 그대로, 출처 파일 · 행만 붙인다) */
+const EXCLUDED_KO = {
+  OVERDUE_EXCLUDED: '기준일(7/1) 이전 만기 — 재전망 기본 제외 (A-08, 민감도에서만 반영)',
+  AP_LINKED_TO_PO: '발주 대금과 같은 건(po_id 있음) — 이중계상 방지로 제외 (calculation_definitions 1.2)',
+  AFTER_HORIZON: '전망 기간(기준일 + 90일) 밖',
+} as const;
+
+export function cashEvents(ds: MasilDataset, arDueOverrides: Record<string, string>): CashEventRowView[] {
+  const fileOf = { AR: F.ar, AP: F.ap, PO: F.purchaseOrders } as const;
+  const colOf = { AR: 'outstanding_krw', AP: 'amount_krw', PO: 'amount_krw' } as const;
+  return cashFlowItems(ds, { arDueOverrides }).map((it) => {
+    const kind = it.source === 'AR' ? 'AR_INFLOW' : it.source === 'AP' ? 'AP_OUTFLOW' : 'PO_PAYMENT';
+    const ref: SourceRef = { file: fileOf[it.source], column: colOf[it.source], rowKey: it.id, row: it.index + 1 };
+    const who = it.source === 'AR' ? ds.ar[it.index]!.channelId : it.source === 'AP' ? ds.ap[it.index]!.supplierId : ds.purchaseOrders[it.index]!.skuId;
+    const item = it.source === 'AR' ? `AR ${it.id} 회수 · ${who}` : it.source === 'AP' ? `AP ${it.id} 지급 · ${who}` : `발주 ${it.id} 대금 · ${who}`;
+    const moved = it.overrideDate !== null;
+    const assumptionIds = it.excluded === 'OVERDUE_EXCLUDED' ? ['A-08'] : it.date && (moved ? it.overrideDate : it.sourceDate) !== it.date ? ['A-09'] : [];
+    return {
+      id: it.id,
+      kind,
+      item: moved ? `${item} (회수 지연: ${it.sourceDate} → ${it.overrideDate}, 모의)` : item,
+      direction: it.amountKrw >= 0 ? 'IN' : 'OUT',
+      amount: money('FULL', Math.abs(it.amountKrw), 'ORIGINAL', [ref]),
+      sourceDate: it.sourceDate,
+      date: it.date,
+      included: it.excluded === null,
+      excludedReason: it.excluded ? EXCLUDED_KO[it.excluded] : null,
+      ref,
+      label: moved ? 'MOCK' : 'ORIGINAL',
+      assumptionIds,
+    };
+  });
+}
+
+// ───────────────────────── AR 목록 (S-02 회수 지연 양식) ─────────────────────────
+
+export function receivablesView(s: S, ds: MasilDataset): ReceivableView[] {
+  const items = new Map(cashFlowItems({ ar: ds.ar, ap: [], purchaseOrders: [] }, { arDueOverrides: s.forecast.options.arDueOverrides ?? {} }).map((i) => [i.id, i]));
+  return ds.ar.map((a, i) => {
+    const ref: SourceRef = { file: F.ar, rowKey: a.id, row: i + 1 };
+    const ov = s.arDueOverrides[a.id];
+    return {
+      id: a.id,
+      channelId: a.channelId,
+      invoiceDate: a.invoiceDate,
+      originalDue: txt(a.dueDate, 'ORIGINAL', [{ ...ref, column: 'due_date' }]),
+      currentDue: ov ? txt(ov, 'MOCK', [{ ...ref, column: 'due_date' }], '회수 지연 사건(모의)으로 바뀐 만기') : txt(a.dueDate, 'ORIGINAL', [{ ...ref, column: 'due_date' }]),
+      overridden: !!ov,
+      amount: money('FULL', a.amountKrw, 'ORIGINAL', [{ ...ref, column: 'amount_krw' }]),
+      outstanding: money('FULL', a.outstandingKrw, 'ORIGINAL', [{ ...ref, column: 'outstanding_krw' }]),
+      agingDays: a.agingDays,
+      overdue: a.dueDate < AS_OF,
+      inForecast: items.get(a.id)?.excluded === null,
+      ref,
+    };
+  });
 }
 
 // ───────────────────────── 데이터 출처 (S-12) ─────────────────────────

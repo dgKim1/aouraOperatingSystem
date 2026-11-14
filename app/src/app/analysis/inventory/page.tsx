@@ -113,7 +113,7 @@ export default async function InventoryPage() {
               <CreateReplenishment
                 lineId={s.lineId}
                 skuIds={s.items.map((i) => i.skuId)}
-                canCreate={role.actorRole === 'SCM'}
+                actorRole={role.actorRole}
                 existing={v.replenishments.filter((r) => r.triggerLineId === s.lineId && r.status !== 'REJECTED').map((r) => r.id)}
               />
             </div>

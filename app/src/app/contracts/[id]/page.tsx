@@ -58,6 +58,27 @@ export default async function ContractPage({ params, searchParams }: { params: P
         </div>
       )}
 
+      {c.status === 'REVIEW_BEFORE_DEADLINE' && (
+        <div className="rounded-md border-2 border-amber-500 bg-amber-50 p-3 text-sm text-amber-950" role="alert">
+          <p className="font-semibold">반려 · 기한 전 재검토 — 미갱신 확정이 아닙니다</p>
+          <p>
+            이대로 통보 기한 {c.noticeDeadline.value} 이 지나면 자동 갱신(= 권한 미경유 체결)됩니다. 통보(조건변경 · 해지)만 기한 후 선택지를 남깁니다.
+          </p>
+          {contractTasks.length > 0 && (
+            <ul className="mt-1 flex flex-wrap gap-x-3 text-xs">
+              {contractTasks.map((t) => (
+                <li key={t.id}>
+                  <Link href={`/tasks#task-${t.id}`} className="underline">
+                    {t.typeText} ({t.id})
+                  </Link>{' '}
+                  · 기한 {fmtDateTime(t.dueAt)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <TabLinks base={base} tabs={TABS} current={tab} />
 
       {tab === 'overview' && (
@@ -211,9 +232,9 @@ export default async function ContractPage({ params, searchParams }: { params: P
             ) : (
               <p>아직 판단안이 없습니다.</p>
             )}
-            <AssessButton subjectType="CONTRACT" subjectIds={[c.id]} label={v.latestAssessment ? '판단안 다시 만들기' : 'AI 판단안 만들기'} aiMode={meta.aiMode} variant={v.latestAssessment ? 'outline' : 'default'} showRequestNext={false} />
+            <AssessButton subjectType="CONTRACT" subjectIds={[c.id]} label={v.latestAssessment ? '판단안 다시 만들기' : 'AI 판단안 만들기'} aiMode={meta.aiMode} variant={v.latestAssessment ? 'outline' : 'default'} showRequestNext={false} actorRole={role.actorRole} />
             {v.latestAssessment && (
-              <RequestApprovalButton key={v.latestAssessment.id} assessmentId={v.latestAssessment.id} disabledReason={v.canRequestApproval ? null : `지금 상태(${c.statusText})에서는 상신할 수 없습니다 — 검토 중일 때만`} />
+              <RequestApprovalButton key={v.latestAssessment.id} assessmentId={v.latestAssessment.id} actorRole={role.actorRole} disabledReason={v.canRequestApproval ? null : c.status === 'REVIEW_BEFORE_DEADLINE' ? '반려 뒤 재상신은 작업 화면의 「재상신」 작업을 완료해 만듭니다 (계약 담당, 이전 요청을 대체하는 v2)' : `지금 상태(${c.statusText})에서는 상신할 수 없습니다 — 검토 중일 때만`} />
             )}
             {v.assessments.length > 1 && (
               <div>
@@ -305,7 +326,9 @@ export default async function ContractPage({ params, searchParams }: { params: P
             <p className="text-xs text-zinc-700">
               [통보 발송 기록]은 <Link href="/tasks" className="underline">작업</Link>에서 계약 담당 역할로 「통보 발송」 작업을 완료합니다{role.actorRole === 'CONTRACT_OFFICER' ? ' (현재 역할 가능)' : ''}.
             </p>
-            {role.actorRole === 'AGENCY' ? (
+            {role.actorRole === 'AGENCY' && !contractTasks.some((t) => t.type === 'CONFIRM_RECEIPT' || t.type === 'RENOTIFY' || t.type === 'INFO_REQUEST') ? (
+              <p className="text-xs text-zinc-700">에이전시가 회신할 열린 작업(수령확인 · 재통보 · 정보 요청)이 없습니다.</p>
+            ) : role.actorRole === 'AGENCY' ? (
               <div>
                 <h4 className="mb-1 text-sm font-semibold">에이전시 회신 (모의)</h4>
                 <CounterpartyReplyForm fixedFrom="AGENCY" defaultOutcome="RECEIPT_CONFIRMED" submitLabel="에이전시 회신 기록 (모의)" />

@@ -10,11 +10,17 @@ import { DeadlineTimeline, TimelineTable } from '@/components/deadline/deadline-
 import { fmtDateTime } from '@/components/format';
 import { ROLE_KO } from '@/domain/types';
 import { cn } from '@/lib/utils';
-import { getMeta, getOverview, getSession } from './_data/views';
+import { getContract, getMeta, getOverview, getSession } from './_data/views';
+
+/** 자동 갱신 뒤 보여 줄 해지 예시일 — 시연 ③-B(DEMO_SCENARIOS S3-4)의 두 날짜. 위약금은 서버(R-PEN-01)가 계산한 값만 표시 */
+const PENALTY_EXAMPLES = ['2026-09-30', '2026-12-31'];
 
 export default async function OverviewPage() {
   const [o, meta, { role }] = await Promise.all([getOverview(), getMeta(), getSession()]);
   const c = o.contract;
+  const reviewing = c.status === 'REVIEW_BEFORE_DEADLINE';
+  const penalties = c.autoRenewed ? (await Promise.all(PENALTY_EXAMPLES.map((d) => getContract(c.id, d)))).map((v) => v?.penaltyPreview ?? null).filter((x) => x !== null) : [];
+  const renewal = c.autoRenewed ? ((await getContract(c.id))?.consequences ?? null) : null;
   return (
     <div className="space-y-4">
       <PageHeader id="S-01" title="운영 현황" decision="기한 안에 누가 무엇을 결정해야 하는지 보고, 승인 요청 · 회신 · 작업으로 바로 이동합니다." />
@@ -73,12 +79,56 @@ export default async function OverviewPage() {
 
         <Section title="전속계약" id="contract" actions={<Link href={`/contracts/${c.id}`} className="text-xs underline">상세</Link>}>
           {c.autoRenewalRisk && !c.autoRenewed && (
-            <p className="mb-2 rounded-md border-2 border-red-500 bg-red-50 p-2 text-sm font-semibold text-red-900" role="alert">
-              자동 갱신 위험 — 유효 통보 없이 통보 기한이 지나면 계약이 권한 승인 없이 체결됩니다.{' '}
-              <Link href={`/contracts/${c.id}?tab=assessment`} className="underline">
-                계약 결정 상신
-              </Link>
-            </p>
+            <div className="mb-2 rounded-md border-2 border-red-500 bg-red-50 p-2 text-sm text-red-900" role="alert">
+              {reviewing && <span className="mb-1 inline-block rounded bg-amber-500 px-1.5 py-0.5 text-xs font-semibold text-white">반려 · 재검토 중</span>}
+              <p className="font-semibold">
+                {reviewing
+                  ? `이대로 ${c.noticeDeadline.value} 이 지나면 자동 갱신(= 권한 미경유 체결)됩니다. 반려는 미갱신 확정이 아닙니다.`
+                  : '자동 갱신 위험 — 유효 통보 없이 통보 기한이 지나면 계약이 권한 승인 없이 체결됩니다.'}
+              </p>
+              <p className="mt-1 text-xs">
+                다음 행동:{' '}
+                {reviewing ? (
+                  <Link href="/tasks" className="underline">
+                    계약 담당 — 정보 요청 · 기한 전 재검토 · 재상신 작업
+                  </Link>
+                ) : (
+                  <Link href={`/contracts/${c.id}?tab=assessment`} className="underline">
+                    계약 결정 상신
+                  </Link>
+                )}
+              </p>
+            </div>
+          )}
+          {c.autoRenewed && (
+            <div className="mb-2 rounded-md border-2 border-red-500 bg-red-50 p-2 text-sm text-red-900" role="alert">
+              <p className="font-semibold">1년 배분 선점 — 자동 갱신으로 고정 피가 확정되었습니다 (권한 미경유 체결)</p>
+              {renewal?.committed && (
+                <p className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                  {renewal.renewalStart} ~ {renewal.renewalEnd} 고정 피 <MoneyValue m={renewal.committed} /> — 다음 확대 판단에서 이 금액이 먼저 묶입니다
+                </p>
+              )}
+              {penalties.length > 0 && (
+                <ul className="mt-1 space-y-0.5 text-xs">
+                  {penalties.map((p) => (
+                    <li key={p.terminateOn} className="flex flex-wrap items-center gap-1">
+                      {p.terminateOn} 해지 시 잔여 {p.remainingMonths}개월 → 위약금 <MoneyValue m={p.amount} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-1 text-xs">
+                다음 행동:{' '}
+                <Link href="/tasks" className="underline">
+                  그룹 CEO/이사회 사고 대응 작업
+                </Link>{' '}
+                ·{' '}
+                <Link href={`/contracts/${c.id}?tab=assessment`} className="underline">
+                  유지 · 중도 해지 판단안
+                </Link>{' '}
+                · 표본 성과와 곱하지 않음
+              </p>
+            </div>
           )}
           <dl className={cn('grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-sm', c.autoRenewed && 'rounded-md bg-red-50 p-2 ring-2 ring-red-500')}>
             <dt className="text-zinc-600">대상</dt>

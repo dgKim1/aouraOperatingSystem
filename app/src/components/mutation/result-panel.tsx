@@ -95,9 +95,12 @@ export function ResultPanel({ title = '처리 결과', result, extra, onClose }:
               <li key={t.id} className="flex flex-wrap items-center gap-1.5">
                 <span className="text-zinc-600">{ENTITY_KO[t.entityType] ?? t.entityType}</span>
                 <EntityLink type={t.entityType} id={t.entityId} />
-                <span>
-                  {t.fromStatus ?? '—'} → <strong>{t.toStatus}</strong>
+                <span title={`${t.fromStatus ?? '—'} → ${t.toStatus}`}>
+                  {t.fromText ?? '—'} → <strong>{t.toText}</strong>
                 </span>
+                {t.displayText && t.displayText !== `${t.fromText ?? '—'} → ${t.toText}` && (
+                  <span className={cn('rounded px-1 text-[11px] font-medium', t.displayText === '승인 거절' ? 'bg-red-100 text-red-900' : t.displayText.startsWith('SCM 검토') ? 'bg-cyan-50 text-cyan-900' : 'bg-white text-zinc-800')}>{t.displayText}</span>
+                )}
                 {t.ruleIds.length > 0 && <span className="font-mono text-[10px] text-zinc-600">{t.ruleIds.join(' ')}</span>}
                 <span className="text-zinc-700">{t.reason}</span>
               </li>

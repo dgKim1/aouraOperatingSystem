@@ -91,7 +91,7 @@ describe('API ① 정상 흐름 (메모리 저장소 · 모의 AI)', () => {
     await call(clockAdvance.POST(req('/api/clock/advance', 'POST', { to: '2026-07-13T10:00:00+09:00' })));
     const list = await call<TaskView[]>(tasks.GET(req('/api/tasks?role=CONTRACT_OFFICER')));
     const send = list.body.find((t) => t.type === 'SEND_NOTICE')!;
-    const done = await call<TaskPatchResponse>(task.PATCH(req('', 'PATCH', { status: 'DONE', resultNote: '조건변경 통보 발송 (모의)' }), ctx({ id: send.id })));
+    const done = await call<TaskPatchResponse>(task.PATCH(req('', 'PATCH', { status: 'DONE', actorRole: 'CONTRACT_OFFICER', resultNote: '조건변경 통보 발송 (모의)' }), ctx({ id: send.id })));
     expect(done.body.transitions.find((t) => t.entityType === 'CONTRACT')).toMatchObject({ toStatus: 'NOTICE_SENT' });
     expect(done.body.createdTasks.map((t) => t.type)).toEqual(['CONFIRM_RECEIPT']);
     await call(clockAdvance.POST(req('/api/clock/advance', 'POST', { to: '2026-07-14T11:00:00+09:00' })));

@@ -14,6 +14,7 @@ import type {
   ApprovalView,
   AssessmentView,
   AuditFilters,
+  AuditRowView,
   CashView,
   ContractView,
   InfluencersView,
@@ -23,12 +24,13 @@ import type {
   PresetInfo,
   ProposalFilters,
   ProposalView,
+  ReceivableView,
   RegistryView,
   ScenarioCheckView,
   TaskView,
 } from '@/domain/api-types';
 import { DomainError } from '@/domain/errors';
-import type { ActorRole, AuditLogEntry } from '@/domain/types';
+import type { ActorRole } from '@/domain/types';
 import { getService } from '@/server/runtime';
 
 export type { ProposalFilters };
@@ -121,9 +123,14 @@ export function getTasks(f: { role?: string; status?: string } = {}): Promise<Ta
   return getService().tasks(f);
 }
 
-/** GET /api/audit?entityType&entityId&actorKind */
-export function getAudit(f: AuditFilters = {}): Promise<AuditLogEntry[]> {
+/** GET /api/audit?entityType&entityId&actorKind — 행마다 표시 문구(fromText · toText · displayText) */
+export function getAudit(f: AuditFilters = {}): Promise<AuditRowView[]> {
   return getService().audit(f);
+}
+
+/** GET /api/receivables — S-02 회수 지연 양식의 AR 선택 목록 */
+export function getReceivables(): Promise<ReceivableView[]> {
+  return getService().receivables();
 }
 
 /** GET /api/analytics/influencers?includeReference= */

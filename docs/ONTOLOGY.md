@@ -5,6 +5,8 @@
 > 경로는 `01_참가자_배포용/04_원본데이터/` 기준. 시연 상황은 [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md), 화면은 [SCREEN_SPEC.md](SCREEN_SPEC.md).
 > **2026-11-14 갱신**: 백엔드 · 프론트엔드 1단계 구현(커밋 `be79a9d`)과 대조해 반영. 바뀐 것 · 새 가정(A-27~A-31) · 후속 작업(BE-xx · FE-xx)은 [7절](#7-1단계-구현-반영--후속-작업-2026-11-14). 같은 날 S-10 공식 전망 대조 결정 반영(A-32 · R-CASH-03 · BE-10 · FE-06).
 > **2026-11-14 갱신(2)**: 백엔드 2단계(DB · API 24개 · AI 에이전트, 미커밋 작업본) 코드 대조 반영 — 판단안 타입 · 도구 호출 기록, 외부 회신 최종 입력 · 상대별 효과, 보충요청 초안 오류, BE-09, DB 스키마 일반화(`raw_rows` · `data jsonb`), 새 가정 A-33 · A-34, BE-01~10 상태, 완료 조건 점검. 목록은 [8절](#8-2단계-백엔드-반영--완료-조건-점검--후속-작업-2026-11-14).
+> **2026-11-14 갱신(3)**: 프론트엔드 2단계(커밋 `f2ba215` 이후, devlog LOG-017) 반영 — **실시간 AI 판단안 보류(사용자 결정)**, 프론트엔드가 문서와 다르게 만든 6건 판정, **쓰기 행위별 허용 역할**([1-3 역할](#쓰기-행위별-허용-역할-2026-11-14)), 새 가정 A-35 · A-36, 완료 조건 재판정, 후속 작업 BE-17~20 · FE-12~14. 목록은 [9절](#9-2단계-프론트엔드-반영--쓰기-권한--실시간-ai-보류-2026-11-14).
+> **2026-11-14 갱신(4)**: 3단계(백엔드 LOG-022 · 025, 프론트엔드 LOG-023) 반영 — BE-17~20 · FE-12~14 완료 표시, **판단 3건**(판단안 미확인 목록의 공백 상태 · ④ 프리셋 판단안 v1 · 재검토 작업 자동 종료), **재상신 근거 판단안 규칙**(1-3 ApprovalRequest), 3-4 작업 자동 종료, A-33 · A-35 문구 보완, 후속 작업 BE-21~24 · FE-15~17. 목록은 [10절](#10-3단계-반영--판단-3건--재상신-규칙--후속-작업-2026-11-14).
 
 ## 0. 표기
 
@@ -16,6 +18,8 @@
 | `ASSUMPTION` | 가정 | 원본에 없어 우리가 정한 값 · 규칙 (가정 ID `A-xx`) |
 | `CLAIM` | 주장 | 회의록 · 부서 메모 · 기안 예상 GMV · 재무팀 공식 전망 |
 | `MOCK` | 모의 | 모의 회신 · 모의 사건 입력 · 모의 모드 AI 출력 |
+
+- **실시간 AI 가 쓴 문장**(판단안의 권고 이유 · 관점별 근거 · 대안 설명)은 위 6종 중 어느 것도 아니다 — 값이 아니라 AI 가 쓴 문장이다. 화면은 출처 배지 대신 **「AI 작성」 표지**를 달고, 문장 속 숫자의 출처는 `facts` 배지와 숫자 출처 검증(`provenance`)으로 보인다. `원본근거해석` 을 쓰지 않는 이유: 그 라벨은 "원본 문구를 근거로 정한 해석"이며 근거 문구를 함께 보여야 하는데(위 표), AI 문장에는 하나의 근거 문구가 정해지지 않아 원본에 근거한 해석처럼 보이게 된다(2026-11-14 결정, 9-2 ⑥). 모의 모드 문장은 지금처럼 `모의`. 시연은 모의 모드라(9-1) 이 표지는 실시간 경로를 다시 열 때만 보인다.
 
 | 스케일 (enum `Scale`) | 대상 |
 |---|---|
@@ -194,7 +198,7 @@ type LineFlag =
 ```ts
 type EventType =
   | 'RENEWAL_NOTICE_RECEIVED'      // 갱신 통보 접수 (inf001 통보서) — payload: {contractId}
-  | 'EXPANSION_PROPOSAL_RECEIVED'  // 확대 기안 접수 — payload: {proposalId, lineIds?}
+  | 'EXPANSION_PROPOSAL_RECEIVED'  // 확대 기안 접수 — payload: {proposalId} (25건 전체. 건 범위 선택 없음 — 아래)
   | 'AR_COLLECTION_DELAYED'        // 조건 변경: 회수 지연 통보 — payload: {arId, newDueDate}
   | 'LINE_TERMS_CHANGED'           // 조건 변경: 기안 금액/집행일 정정 — payload: {lineId, requestedKrw?, settlementDate?}
   | 'APPROVAL_REPLY'               // 모의 회신 — payload: ApprovalReply
@@ -202,6 +206,7 @@ type EventType =
   | 'CLOCK_ADVANCED';              // 시점 이동 — payload: {from, to}
 interface Event { id: string; type: EventType; payload: unknown; label: 'ORIGINAL' | 'MOCK'; simAt: string; createdAt: string; createdBy: ActorRole }
 ```
+- **기안 접수는 25건 전체로만 한다** (2026-11-14 결정, 9-2 ①). 첫 판의 `lineIds?`(건 범위 선택)는 없앤다. 이유: 권한 판정의 기안 총액은 25건 현재 요청액 합이다(R-AUTH-01, [W02_TASK 3-3](W02_TASK.md)). 일부만 접수하면 총액이 줄어 — 예: 7/17 마감 5건만이면 70,902,290 < 1억 — 건별 1천만 이하 건이 Masil 대표에서 마케팅팀 전결로 내려간다. 입력 범위로 승인 권한 제약을 없애는 결과라 막는다(CLAUDE.md 규칙 7). 판단 범위를 나누는 일은 접수가 아니라 S-04 행 선택 → 판단안(대상 건 지정)이 한다. payload 에 `lineIds` 가 오면 422 `VALIDATION`(BE-20).
 - `COUNTERPARTY_REPLY` 입력 (2단계 최종, `types.ts` — 2026-11-14 코드 확인). S-02 「외부 회신」 · S-03 통보 탭 · S-07/S-09 SCM [보충 검토 회신]이 모두 이 모양으로 `POST /api/events` 에 보낸다:
 
   ```ts
@@ -220,7 +225,7 @@ interface Event { id: string; type: EventType; payload: unknown; label: 'ORIGINA
   | 보내는 쪽 | 회신 결과 | 도메인 함수 | 상태 변경 | 근거 |
   |---|---|---|---|---|
   | AGENCY | 수령확인 | `recordNoticeReceipt` | `NoticeReceipt` 생성, 계약 `NOTICE_SENT → NOTICE_ACKNOWLEDGED → NEGOTIATING/TERMINATING`, `CONFIRM_RECEIPT` · `RENOTIFY` 작업 `DONE`. 계약이 `NOTICE_SENT` 가 아니면 409 | R-EXT-01 |
-  | AGENCY | 정보 제공 | `recordCounterpartyReply` | 열린 계약 `INFO_REQUEST` 작업 `DONE` + 결과 메모, **`contract.performanceFeeTerms` = 회신 문구(MOCK)**, 계약 이력 1행(상태 유지). 다음 판단안의 사실 「성과 피 조건」이 `모의` 값으로 바뀌고 `unknowns` 에서 G-02 가 빠진다. 권한 판정 연 금액은 하한 28억 그대로 | **A-33** |
+  | AGENCY | 정보 제공 | `recordCounterpartyReply` | 열린 계약 `INFO_REQUEST` 작업 `DONE` + 결과 메모, **`contract.performanceFeeTerms` = 회신 문구(MOCK)**, 계약 이력 1행(상태 유지). 다음 판단안의 사실 「성과 피 조건」이 `모의` 값으로 바뀌고, `unknowns` 의 G-02 는 **빠지지 않고 `status = 'FILLED_BY_MOCK'`("모의 회신으로 보완 — 원본 공백은 그대로")로 남는다**(2026-11-14 결정 10-1 ⓐ, BE-21 — 지금 구현은 목록에서 뺌). 권한 판정 연 금액은 하한 28억 그대로 | **A-33** |
   | AGENCY | 정보 부족 · 거절 | `recordCounterpartyReply` | 열린 계약 `INFO_REQUEST` 작업 `DONE` + 결과 메모만. G-02 유지. 계약 · 통보 상태는 바꾸지 않는다(통보는 일방 통지라 상대 거절로 효력이 바뀌지 않음) | ③ S3-2 |
   | SCM | 정보 제공 + 보충 불필요(`replenishmentNeeded:false`, 입고 예정일) | `scmReview` | SCM `REPLENISHMENT_REVIEW` · `INFO_REQUEST` `DONE`, 초안 전부 `DRAFT → REJECTED`(사유 "불필요: …"), 연결 건 `supplyOutlook = INBOUND_CONFIRMED` + `inboundExpectedDate` | A-30 (④-a) |
   | SCM | 정보 제공 + 보충 필요(`true`) | `scmReview` | SCM 두 작업 `DONE`, 초안 `DRAFT → SUBMITTED` + 보충 승인요청 1건(R-AUTH-04: SCM, 지급일이 하회 구간이면 그룹 CEO/이사회) | ④-b |
@@ -233,7 +238,7 @@ interface Event { id: string; type: EventType; payload: unknown; label: 'ORIGINA
 - 이벤트 처리 결과에 붙는 `routingChanges` 항목 = `{lineId, from, to, ruleId, action}`. `action` 은 R-AUTH-06 처리 방식(4-1 표).
 
 #### Assessment (판단안)
-`id` · `subjectType`(`'CONTRACT' | 'EXPANSION_LINES' | 'REPLENISHMENT'`) · `subjectIds` · `triggerEventId` · `facts: AssessmentFact[]`(도구가 돌려준 값만) · `ruleResults: AssessmentRuleResult[]` · `alternatives: Alternative[]` · `recommendation: {alternativeId, rationale}` · `perspectives: {marketing, finance, contract, scm}`(관점별 근거 문장) · `claimsCited: {text, ref}[]`(주장 인용은 분리) · `unknowns: {gapId, impact}[]` · `aiMode: 'LIVE' | 'MOCK'` · `model` · `version`(같은 대상(`subjectType` + 정렬한 `subjectIds`) 판단안의 버전, 다시 판단하면 +1 — AC-3-02 판단안 v2 · AC-4-06 "버전이 올라간다") · `createdAt` · 아래 2단계 필드.
+`id` · `subjectType`(`'CONTRACT' | 'EXPANSION_LINES' | 'REPLENISHMENT'`) · `subjectIds` · `triggerEventId` · `facts: AssessmentFact[]`(도구가 돌려준 값만) · `ruleResults: AssessmentRuleResult[]` · `alternatives: Alternative[]` · `recommendation: {alternativeId, rationale}` · `perspectives: {marketing, finance, contract, scm}`(관점별 근거 문장) · `claimsCited: {text, ref}[]`(주장 인용은 분리) · `unknowns: {gapId, impact, status, statusText}[]`(아래 「미확인 목록의 공백 상태」) · `aiMode: 'LIVE' | 'MOCK'` · `model` · `version`(같은 대상(`subjectType` + 정렬한 `subjectIds`) 판단안의 버전, 다시 판단하면 +1 — AC-3-02 판단안 v2 · AC-4-06 "버전이 올라간다") · `createdAt` · 아래 2단계 필드.
 
 ```ts
 interface AssessmentFact { key: string; name: string; value: Sourced<unknown> }   // key = 안정 식별자 예 'line.PLAN-004.cp', name = 화면 표시명
@@ -247,8 +252,10 @@ stopReason?: string | null       // 모델 stop_reason (모의면 null)
 warnings?: string[]
 ```
 - `Alternative = { id, title, decision, effects: Sourced<unknown>[], risks: string[], requiresRole: ApproverRole }`.
+- **미확인 목록의 공백 상태** (2026-11-14 결정, 10-1 ⓐ · BE-21): `unknowns[].status` = `'OPEN'`(미확인) 또는 `'FILLED_BY_MOCK'`(모의 회신으로 보완 — 원본 공백은 그대로), `statusText` 는 그 표시 문구. 판정은 S-12 공백 상태(BE-12)와 **같은 함수 · 같은 값**을 쓴다: G-02 = 에이전시 모의 「정보 제공」으로 `performanceFeeTerms` 가 채워짐, G-03 = 모의 수령확인(`NoticeReceipt`)이 있음, G-08 = SCM · Corevia 모의 회신으로 공급 전망 · 입고 예정일이 기록됨. **모의 회신으로 채워졌다고 `unknowns` 에서 빼지 않는다** — 원본 공백은 그대로이고(A-33), 판단안이 해소된 것처럼 보이면 S-12 와 어긋난다. 그 판단안을 만든 시점의 상태를 저장한다(나중에 바뀌어도 저장된 판단안은 그대로 — 스냅샷). 지금 구현은 계약 판단안에서 G-02 · G-03 을 목록에서 뺀다(`domain/assessment.ts` `unknownIds`).
 - **AI 가 만든 숫자는 저장하지 않는다.** 판단안의 모든 숫자는 `facts` / `ruleResults` 의 값을 참조한다(CLAUDE.md 규칙 9). 2단계 구현은 이를 **숫자 출처 검증**(`domain/provenance.ts`)으로 강제한다: 문장(권고 이유 · 관점 · 대안 제목 · 효과 · 위험)의 숫자는 `facts` · `ruleResults` 값만 허용, 주장 숫자(예상 GMV 등)는 `claimsCited` 에만, `facts` 에 `CLAIM` 값이 있으면 위반. 날짜 · ID · 절 번호 · 0~12 작은 정수 · 연도는 숫자로 보지 않는다. 실시간 AI 결과가 검증을 통과하지 못하면 저장하지 않고 결정적 모의 문장으로 대체한다(`aiMode = MOCK`, `fallbackReason` 기록).
 - **AI 가 정하는 것은 문장과 계약 대안(A/B/C) 권고 하나뿐**이다. 숫자 · 권한자 · 건별 권고(`proposedDecisions`)는 `domain/assessment.ts` 가 결정적으로 만든다. 권고 대안 ID 는 제출 도구 스키마의 enum 으로 제한된다.
+- **시연은 모의 판단안으로 한다** (2026-11-14 사용자 결정, 9-1). 실시간 AI 확인(BE-15)은 보류. 모의 모드에서는 같은 도구 6개를 코드가 직접 실행하고(`toolCalls[].actor = 'SYSTEM'`), 문장은 결정적 문장, 계약 대안 권고는 규칙(`domain/assessment.ts`)이 정한다. 숫자 · 권한자 · 건별 권고 · 상태 전이는 실시간이든 모의든 같으므로 시연 흐름(상신 → 회신 → 상태 변경 → 다음 판단)에 영향이 없다. 화면은 헤더 · 판단안에 `모의` 표시를 유지한다(UI-06).
 - **판단안 저장 · 이력** (2단계): `WorldState.assessments` 에 쌓인다. 저장할 때 이력 1행 — `entityType = 'ASSESSMENT'`, `fromStatus = null → toStatus = 'CREATED'`, `actorRole = 'AI_AGENT'`, `actorKind = 'AI'`(실시간) 또는 `'MOCK'`, `ruleIds` = 판단안이 쓴 규칙, 사유에 버전 · 권고 · 모의 대체 이유. **판단안은 어떤 엔티티의 상태도 바꾸지 않는다**(3-1 "AI 는 어떤 전이도 직접 일으키지 않는다").
 - **빈 대기 요청에 판단안 자동 연결**: 판단안을 저장할 때, `assessmentId` 가 비어 있는 `PENDING` 승인요청 중 같은 `subjectType` 이고 대상이 판단안 대상에 모두 들어 있는 요청에 판단안 ID 를 채운다(이력 1행, 승인요청 상태 유지). 예: ② 권한 재판정으로 시스템이 만든 PLAN-004 재승인 요청에 ASM-004 가 붙는다.
 - **동시성**: 판단안은 상태를 읽은 버전에서만 저장된다. AI 호출 중 다른 처리로 상태가 바뀌었으면 409 `CONFLICT`("판단안을 만드는 사이 상태가 바뀌었습니다 — 다시 만드세요").
@@ -272,6 +279,12 @@ warnings?: string[]
 | `supersedesId` | `string \| null` | 권한 재판정 · 재상신 시 이전 요청 |
 
 - **요청 ID(`APR-nnn`)는 생성 순서 일련번호일 뿐 의미가 없다.** 프리셋마다 재생하는 이벤트가 달라 같은 의미의 요청도 번호가 달라진다(예: ③ 재상신 요청은 ③ 프리셋에서 `APR-004`). 수용 기준 · 테스트 · 모의 회신은 번호가 아니라 **의미(대상 · requiredRole · version · supersedesId)** 로 요청을 찾는다. 문서의 `APR-00n` 표기는 해당 프리셋에서의 예시다.
+- **재상신 근거 판단안 · 권고 결정** (2026-11-14 확정, 계약 `RESUBMIT` 작업 완료 — LOG-023 결함 · LOG-025 수정 · 10-2):
+  1. **근거 판단안** = 작업 완료 요청이 지정한 판단안(`payload.assessmentId`), 지정하지 않으면 **그 시점 최신 계약 판단안**(같은 계약 대상 중 버전이 가장 높은 것). 새 요청의 `assessmentId` 에 넣는다. 없는 판단안 ID → 404 `NOT_FOUND`, 계약 판단안이 아닌 것 → 422 `VALIDATION`, 어느 경우든 상태 불변(작업도 열린 채).
+  2. **권고 결정(`proposed`)** = 근거 판단안의 권고 대안의 결정. 이전 요청의 권고를 복사하지 않는다 — 반려된 권고안을 그대로 다시 올리면 근거 판단안과 요청 권고가 어긋나 권한자가 틀린 안에 회신한다(③ 분기 A: ASM-003 권고 C 해지인데 재상신 요청이 `RENEGOTIATE` 였던 결함).
+  3. **상신자 지정 결정**: `payload.proposedDecision`(`RENEW_SAME` · `RENEGOTIATE` · `TERMINATE`)이 오면 그 값이 우선한다 — 무엇을 올릴지는 상신자(계약 담당)의 일이고 결정은 여전히 권한자 회신으로만 확정된다(R-AUTH-05). 단 판단안 권고와 다르면 **숨기지 않는다**: 승인요청 생성 이력 사유에 "상신자 지정 결정 {결정} — 근거 판단안 {ID} 권고 {결정} 와 다름"을 남기고, API(`ApprovalView`)가 `proposedSource: 'ASSESSMENT' | 'SUBMITTER'` 와 판단안 권고 문구를 준다(BE-22). 화면 입력은 두지 않는다(API 전용).
+  4. **계약 판단안이 하나도 없으면 재상신을 거부한다** — 422 `INFO_MISSING` "근거 판단안이 없습니다 — 판단안을 만든 뒤 재상신하세요", 상태 불변(BE-22. 지금 구현은 이전 요청의 권고를 유지하고 `assessmentId = null` 로 요청을 만든다). 이유: 승인요청은 근거 판단안의 숫자 스냅샷 위에서 결정된다(위 `assessmentId`). 근거 없이, 그것도 반려된 권고를 그대로 실어 28억 계약을 권한자에게 올리는 경로를 두지 않는다. API 경로에서는 첫 상신이 판단안에서 만들어지므로 이 경우가 생기지 않고, 도메인 함수 직접 호출(테스트)에서만 생긴다. 근거 판단안의 권고가 "권고 없음"(`NONE`)이고 상신자 지정도 없으면 지금처럼 422.
+  5. **반려 뒤 판단안을 다시 만들지 않고 재상신**(최신 판단안 = 반려된 요청의 근거)하는 것은 막지 않는다 — 요청 권고와 근거 판단안이 서로 맞고, 다시 올릴지는 상신자 판단이다. 시연 절차는 재판단(v2) 뒤 재상신이고(DEMO S3-2 → S3-3), S-07 재상신 양식이 근거 판단안의 버전 · 권고를 보여 무엇이 올라가는지 알 수 있게 한다(FE-16).
 - 이전 요청의 상태 처리: 이전 요청이 아직 `PENDING` 이면 `SUPERSEDED` 로 닫는다. 이미 회신된 요청(`APPROVED` · `REJECTED` 등)은 **상태를 그대로 두고** 새 요청의 `supersedesId` 로만 연결한다(회신 기록은 사실이므로 바꾸지 않는다). 회신된 요청 안의 일부 건만 재승인이 필요해진 경우(② APR-003 의 PLAN-004)도 같다 — 그 건의 승인 효력 상실은 건의 이력(`APPROVED → REAPPROVAL_REQUIRED`)으로 남긴다.
 
 #### ApprovalReply [MOCK]
@@ -362,6 +375,28 @@ type ActorRole = ApproverRole | 'CONTRACT_OFFICER' | 'FINANCE' | 'AGENCY' | 'COR
 | `AGENCY` | 혜인 소속 에이전시 | 통보서 발신자 | ORIGINAL(존재) · 회신은 MOCK |
 | `COREVIA` | Corevia(공급사) | `m_sku_ms.source_company` | ORIGINAL(존재) · 회신은 MOCK |
 
+#### 쓰기 행위별 허용 역할 (2026-11-14)
+
+상태를 바꾸는 API 마다 **누가 그 행위를 할 수 있는가**와 **서버가 검사하는가**를 정한다. 원칙:
+- 서버가 역할을 검사하는 쓰기는 **행위자가 누구인지가 권한 · 책임의 뜻을 갖는 쓰기**다 — 승인 회신(원본 정책, R-AUTH-05), 작업 처리(작업 담당, A-35), 보충요청 초안(SCM, A-35). `AI_AGENT` · `SYSTEM` 은 이 행위들의 행위자가 될 수 없다(3-1).
+- 결정을 확정하지 않는 쓰기(사건 기록 · 판단안 · 상신)와 시연 운영 행위(시점 이동 · 리셋)는 역할을 검사하지 않는다(A-36). 이들은 승인 효력을 만들지 않고, 권한자 · 기한 · 공급 제약은 규칙 코드가 정하므로 누가 눌러도 결과가 같다. 그래서 검사하지 않아도 원본 제약이 사라지지 않는다(CLAUDE.md 규칙 7 · 10).
+- 이력의 `actorRole` 은 화면 역할이 아니라 아래 「이력의 행위자」 값으로 남는다(지금 구현 그대로).
+
+| 쓰기 행위 | API | 허용 역할 | 이력의 행위자 (`actorRole` / `actorKind`) | 서버 검사 | 근거 · 출처 태그 |
+|---|---|---|---|---|---|
+| **승인 회신** | `POST /api/approval-requests/:id/replies` (= 사건 `APPROVAL_REPLY`) | 요청의 `requiredRole` 이면서 대상 건의 **현재 권한자**(R-AUTH-06 상향 반영) | `respondentRole` / `MOCK` | **함 — 구현됨**. 아니면 422 `FORBIDDEN_ROLE`, 상태 불변 | `approval_authority_policy.md` 권한 표 · "Agent 는 경계를 넘는 결정을 자동 확정하지 않는다" [원본] · R-AUTH-05 |
+| **작업 상태 변경** (시작 · 완료 · 취소) | `PATCH /api/tasks/:id` | 작업 **담당 역할(`ownerRole`)만**. 요청의 `actorRole` 필수 | 화면 역할(= `ownerRole`) / `HUMAN` | **함 — 구현됨**(BE-17, LOG-022: 도메인 함수 `domain/permissions.ts` `assertTaskActor` — 프리셋 재생 경로에도 적용, 상위 권한자라도 담당이 아니면 거부). `actorRole` 없음 → 422 `VALIDATION`, `ownerRole` 과 다름 → 422 `FORBIDDEN_ROLE`, 상태 불변 | 담당은 BPMN W02 레인(계약 담당: t1 접수 · t3 조건 확인 · t4 승인조건 문서화 · t5 통보 · t6 기록) [원본 — 레인 자체는 주최 교육용 가정 A-22]과 작업 생성 규칙(1-3 작업 기한 규칙)이 정한 값. 작업을 담당 외 역할이 처리해도 되는지는 원본에 없음 → **A-35** [가정] |
+| └ SCM 보충 검토 작업 (`REPLENISHMENT_REVIEW` · SCM `INFO_REQUEST`) 의 완료 | `PATCH` 완료 **불가** — 아래 「외부 회신 입력」(SCM)으로만 닫힘 | — | — | **함 — 구현됨**(BE-18). 409 `INVALID_TRANSITION` "SCM 보충 검토 회신으로 닫습니다". 시작 · 취소(사유)는 SCM 이 `PATCH` 로 가능 | 3-4 · 3-5 (회신이 보충요청 전이를 일으킴) [가정 A-35] |
+| **외부 회신 입력** | `POST /api/events` `COUNTERPARTY_REPLY` | 회신을 보낸 상대 = `from`(AGENCY · SCM · COREVIA). 시연에서는 시연자가 그 상대를 대신 입력한다 — 화면 역할 목록에 없는 COREVIA 포함. 화면 버튼은 S-03 통보 탭 · S-07 에이전시 회신은 에이전시(모의) 역할, S-07 · S-09 [보충 검토 회신]은 SCM 역할에서 보이고, S-02 「외부 회신」 양식은 역할과 무관 | `from` / `MOCK` | 하지 않음 — `from` 이 곧 행위자이고, 상태는 맞는 열린 작업 · 초안이 있을 때만 바뀐다(없으면 404). 상대가 하는 행동 종류는 상대별 효과 표로 제한(SCM · Corevia 수령확인 422) | 상대 존재: 통보서 발신자(에이전시) · `m_sku_ms.source_company`(Corevia) [원본] · 정책 "재고 발주 승인 SCM" [원본]. 회신 내용 [모의]. 검사 없음 **A-36** [가정] |
+| **사건 입력** — 갱신 통보 접수 · 확대 기안 접수 · 회수 지연 통보 · 기안 조건 정정 | `POST /api/events` | 역할 무관(시연자) | 사건 유형별 고정: 통보 접수 `CONTRACT_OFFICER`(BPMN t1) · 기안 접수 `MARKETING_TEAM`(기안 주체) · 회수 지연 `FINANCE` · 기안 정정 `MARKETING_TEAM` / 통보 · 기안 접수 `HUMAN`(라벨 `ORIGINAL`), 회수 지연 · 정정 `MOCK` | 하지 않음 | 사건 입력은 밖에서 일어난 일을 시스템에 들여오는 입구이고 결정이 아니다. 행위자 고정값은 BPMN 레인 · 원본 문서 작성자 [원본근거해석], 검사 없음 **A-36** [가정] |
+| **판단안 생성** | `POST /api/assessments` | 역할 무관. 화면은 내부 역할(마케팅팀 · Masil 대표 · 그룹 CEO/이사회 · SCM · 계약 담당)에서 버튼을 보이고 에이전시(모의)에서는 숨긴다(FE-14) | `AI_AGENT` / `AI`(실시간) 또는 `MOCK` | 하지 않음 — 판단안은 어떤 엔티티의 상태도 바꾸지 않는다(1-3 Assessment, 3-1) | ONTOLOGY 3-1 "AI 는 어떤 전이도 직접 일으키지 않는다" · **A-36** [가정] |
+| **승인요청 상신** | `POST /api/approval-requests` | 업무상 상신자: 계약 = 계약 담당(BPMN t3 → 승인 분기), 기안 건 = 마케팅팀(기안 주체). 서버는 역할을 받지 않는다 | `SYSTEM` / `SYSTEM`(도구가 판단안에서 요청 생성) | 하지 않음 — 상신은 `PENDING_APPROVAL` 로 올릴 뿐 승인 효력이 없고, 권한자(`requiredRole`)는 규칙 엔진이 정한다(누가 상신해도 같은 권한자). 보충 판단안은 409(보충 상신은 SCM 회신으로만) | BPMN W02 [원본 — 주최 가정 레인] · 정책 권한 표 [원본] · 검사 없음 **A-36** [가정] |
+| **보충요청 생성** (초안) | `POST /api/replenishment-requests` | **SCM 만**. 요청의 `actorRole` 필수 (화면 S-09 [보충 요청 만들기]도 SCM 역할에서만) | `SYSTEM` / `SYSTEM` (초안 생성 이력) | **함 — 구현됨**(BE-17, `assertReplenishmentDrafter`). `actorRole` 없음 → 422 `VALIDATION`, SCM 아님 → 422 `FORBIDDEN_ROLE`, 상태 불변 | 정책 "재고 발주 승인 SCM" [원본] → 발주 준비 주체를 SCM 으로 봄 [원본근거해석]. 초안은 현금 약정이 아니지만(A-30) SCM 작업 2건 · G-08 질문을 여는 SCM 절차의 시작점이라 담당 부서가 연다 **A-35** [가정]. 승인 권한자는 지급일로 규칙이 정한다(R-AUTH-04 · R-AUTH-03) |
+| **시점 이동** | `POST /api/clock/advance` (= 사건 `CLOCK_ADVANCED`) · 미리보기 `GET /api/clock/preview` | 시연자(역할 무관) — **시연 운영 행위** | `SYSTEM` / `SYSTEM` (기한 감시 전이) | 하지 않음. 과거로는 409 `CLOCK_BACKWARD` | 가상 기준시각은 시연 장치(A-21) [가정]. 기한이 지나면 무엇이 되는지는 원본 정책(자동 확정 · 자동 갱신)이 정한다 [원본] |
+| **시나리오 리셋** | `POST /api/scenarios/:id/reset` | 시연자(역할 무관) — **시연 운영 행위** | 이력을 비우고 프리셋 재생(재생 이력의 행위자는 각 단계 그대로) | 하지 않음. 원본 적재 테이블은 건드리지 않는다 | 시연 재현 장치 [가정 A-36]. 서버 상태가 하나라 모든 사용자에게 같은 상태가 보인다(DEMO 0-4 시연 운영 주의) |
+
+- **배포 환경의 접근 통제(로그인 · 사용자별 권한)는 이번 범위가 아니다** [가정]. 위 검사는 "역할을 바꿔 누른 요청이 권한 · 담당 경계를 넘지 못한다"를 서버가 보장하는 것이고, 사람의 신원 확인은 하지 않는다(화면 역할 전환은 시연 장치). 제출 설명에 "역할 전환은 시연용, 신원 확인 미구현"으로 적는다.
+
 ## 2. 관계
 
 | 관계 | 카디널리티 | 연결 키 | 라벨 |
@@ -392,10 +427,10 @@ type ActorRole = ApproverRole | 'CONTRACT_OFFICER' | 'FINANCE' | 'AGENCY' | 'COR
 
 | 코드 | HTTP | 언제 |
 |---|---|---|
-| `FORBIDDEN_ROLE` | 422 | 회신자가 `requiredRole`(또는 건의 현재 권한자)이 아님 — R-AUTH-05 |
-| `VALIDATION` | 422 | 입력 형식 · 조합 오류: 필수 필드 · 형식(날짜 · 정수 · enum), JSON 아님, 반려 사유 · 정보 요청 질문 없음, 회신 유형과 건별 결정 불일치(BE-08), SCM · Corevia 수령확인, SCM 정보 제공에 `replenishmentNeeded` 없음, 보충 대상 아닌 SKU, 작업 취소 사유 없음, 기준시각 이전 날짜의 사건 · 집행일 |
+| `FORBIDDEN_ROLE` | 422 | 회신자가 `requiredRole`(또는 건의 현재 권한자)이 아님 — R-AUTH-05. **작업 처리(`PATCH /api/tasks/:id`)의 행위 역할이 작업 담당(`ownerRole`)이 아님 — A-35 (BE-17, 1-3 쓰기 행위별 허용 역할)** |
+| `VALIDATION` | 422 | 입력 형식 · 조합 오류: 필수 필드 · 형식(날짜 · 정수 · enum), JSON 아님, 반려 사유 · 정보 요청 질문 없음, 회신 유형과 건별 결정 불일치(BE-08), SCM · Corevia 수령확인, SCM 정보 제공에 `replenishmentNeeded` 없음, 보충 대상 아닌 SKU, 작업 취소 사유 없음, 기준시각 이전 날짜의 사건 · 집행일, **작업 처리에 `actorRole` 없음(BE-17) · 기안 접수에 `lineIds`(BE-20)** |
 | `INFO_MISSING` | 422 | 업무상 필요한 값 없음: 계약 승인 결정(`decision`), 조건부 승인 조건 문구, 기안 정정의 바꿀 값 |
-| `INVALID_TRANSITION` | 409 | 전이표에 없는 전이, 이미 처리된 요청 · 작업, 원본 기한 지난 요청 회신, 기한 지난 통보 발송, 같은 건 보충 초안 중복 |
+| `INVALID_TRANSITION` | 409 | 전이표에 없는 전이, 이미 처리된 요청 · 작업, 원본 기한 지난 요청 회신, 기한 지난 통보 발송, 같은 건 보충 초안 중복, **SCM 보충 검토 작업을 `PATCH` 로 완료(BE-18 — SCM 보충 검토 회신으로만 닫힘)** |
 | `CLOCK_BACKWARD` | 409 | 시점을 과거로 이동 |
 | `CONFLICT` | 409 | 낙관적 잠금 — 읽은 뒤 상태 버전이 바뀜(판단안 생성 중 다른 처리) |
 | `NOT_FOUND` | 404 | 없는 ID, 맞는 대기 요청 · 열린 작업 · 보충 초안 없음, 없는 프리셋 |
@@ -409,7 +444,7 @@ UNDER_REVIEW ──(판단안 확정 · 승인요청 생성)──▶ PENDING_AP
 PENDING_APPROVAL ──(회신 APPROVED, decision=RENEW_SAME)──▶ RENEWED_APPROVED (종결)
 PENDING_APPROVAL ──(회신 APPROVED, decision=RENEGOTIATE|TERMINATE)──▶ NOTICE_PENDING  [+Task SEND_NOTICE, DOCUMENT_CONDITIONS]
 PENDING_APPROVAL ──(회신 REJECTED | INFO_REQUESTED)──▶ REVIEW_BEFORE_DEADLINE  [+Task REVIEW_BEFORE_DEADLINE, RESUBMIT(, INFO_REQUEST)]
-REVIEW_BEFORE_DEADLINE ──(재상신)──▶ PENDING_APPROVAL (version+1)
+REVIEW_BEFORE_DEADLINE ──(재상신: RESUBMIT 작업 완료)──▶ PENDING_APPROVAL (version+1, 권고 = 근거 판단안 — 1-3 ApprovalRequest)  [열린 Task REVIEW_BEFORE_DEADLINE 자동 종료 — 3-4, BE-23]
 NOTICE_PENDING ──(SEND_NOTICE 완료)──▶ NOTICE_SENT  [+Task CONFIRM_RECEIPT]
 NOTICE_SENT ──(NoticeReceipt 입력)──▶ NOTICE_ACKNOWLEDGED  → decision 별로 NEGOTIATING | TERMINATING
 NOTICE_SENT ──(수령 미확인 + [발송 후 2영업일 경과 또는 기한 당일 09:00] 중 먼저)──▶ (상태 유지) [+Task RENOTIFY 1회]  ← 확장 E1
@@ -475,7 +510,19 @@ PENDING_APPROVAL ──(조건 변경으로 requiredRole 상향, R-AUTH-06 RESUB
 - `PENDING` 이 아닌 요청 · 원본 기한이 지난 요청에 회신하면 409 `INVALID_TRANSITION`.
 
 ### 3-4. Task (`TaskStatus`)
-`OPEN` → `IN_PROGRESS` → `DONE` | `CANCELLED`. `simNow > dueAt` 이고 미완료면 `OVERDUE`(기한 감시가 표시만 바꿈). 작업 완료가 다른 엔티티 전이를 일으키는 경우: `SEND_NOTICE` → 계약 `NOTICE_SENT`, `RESUBMIT` → 새 승인요청, `REPLENISHMENT_REVIEW` → 보충요청 `SUBMITTED`.
+`OPEN` → `IN_PROGRESS` → `DONE` | `CANCELLED`. `simNow > dueAt` 이고 미완료면 `OVERDUE`(기한 감시가 표시만 바꿈). 작업 완료가 다른 엔티티 전이를 일으키는 경우: `SEND_NOTICE` → 계약 `NOTICE_SENT`, `RESUBMIT` → 새 승인요청, `RESCHEDULE_CAMPAIGN` → 건 집행일 변경(→ 권한 재판정 R-AUTH-06). SCM 의 `REPLENISHMENT_REVIEW` · `INFO_REQUEST` 는 작업 완료(`PATCH`)가 아니라 **SCM 보충 검토 회신**(`COUNTERPARTY_REPLY`, 1-3 Event 상대별 효과)으로 닫히고 보충요청 전이(`DRAFT → SUBMITTED | REJECTED`)도 그 회신이 일으킨다 — 첫 판의 "`REPLENISHMENT_REVIEW` 완료 → 보충요청 `SUBMITTED`" 는 구현과 달라 고쳤다(2026-11-14): 보충 검토 작업은 **회신으로만 닫히고**, `PATCH` 로 완료하면 **409 `INVALID_TRANSITION`** 이다(BE-18 **구현됨** — `domain/workflow.ts` `completeTask`, LOG-022. 회신 효과 없이 작업만 닫히면 G-08 · 초안이 방치되기 때문). SCM 의 시작 · 취소(사유)는 `PATCH` 로 가능하다. 작업을 누가 처리할 수 있는지는 [1-3 쓰기 행위별 허용 역할](#쓰기-행위별-허용-역할-2026-11-14).
+
+**다른 처리의 결과로 닫히는 작업** (사람의 `PATCH` 없이 — 2026-11-14 정리). 담당 역할 검사(A-35)는 사람이 `PATCH` 로 처리하는 경우의 규칙이고, 아래는 규칙 코드가 사건의 결과로 닫는 경우다. 모두 이력 1행을 남긴다.
+
+| 작업 | 닫는 사건 | 결과 상태 · 이력 행위자 | 상태 |
+|---|---|---|---|
+| `CONFIRM_RECEIPT` · `RENOTIFY` | 에이전시 수령확인 회신 | `DONE` · `AGENCY` / `MOCK` | 구현됨 |
+| 계약 `INFO_REQUEST` | 에이전시 정보 제공 · 정보 부족 · 거절 회신 | `DONE` + 결과 메모 · `AGENCY` / `MOCK` | 구현됨 |
+| SCM `REPLENISHMENT_REVIEW` · `INFO_REQUEST` | SCM · Corevia 회신(1-3 Event 상대별 효과) | `DONE` · 회신자 / `MOCK` | 구현됨 |
+| 계약 **`REVIEW_BEFORE_DEADLINE`** | 같은 계약의 **`RESUBMIT` 완료**(새 승인요청 생성) | **`CANCELLED`** · `SYSTEM` / `SYSTEM`, 사유 "재상신 완료로 종료 — 재검토 결과는 재상신 요청 {ID} · 근거 판단안 {ID}" | **결정 10-1 ⓒ — BE-23**(지금은 열린 채 남아 7/15 뒤 OVERDUE) |
+
+- `REVIEW_BEFORE_DEADLINE` 을 `DONE` 이 아니라 `CANCELLED` 로 닫는 이유: 사람이 재검토 완료를 기록한 것이 아니라 재상신으로 더 할 일이 없어진 것이다(이력을 사실대로). 계약 담당이 재상신 전에 직접 완료했다면 그 `DONE` 을 그대로 둔다. 재상신이 다시 반려되면 새 재검토 · 재상신 작업이 생긴다(3-1, 지금 동작 유지).
+- **자동으로 닫지 않는 작업**: `DOCUMENT_CONDITIONS`(승인조건 문서화, BPMN t4)는 사람이 실제로 해야 하는 일이라 통보 발송 · 수령확인이 끝나도 닫지 않는다 — 완료하지 않으면 기한(통보 기한 D-1) 뒤 `OVERDUE` 로 보이는 것이 맞다. `REPORT_TO_GROUP` 도 같다. 시연 절차에 완료 단계를 둔다(DEMO S1-6 · S3-3). 자동 갱신(③-B) 뒤 남은 재검토 · 재상신 작업도 닫지 않는다(하지 않은 일이다).
 
 ### 3-5. ReplenishmentRequest
 ```
@@ -643,8 +690,10 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 | A-30 | SCM 검토에서 "보충 불필요"로 회신된 보충요청 초안은 승인 절차 없이 `DRAFT → REJECTED`(사유 '불필요')로 종결 | 초안은 현금 약정이 아니므로 권한자 승인이 필요 없다(정책의 승인 대상은 발주). 1단계 백엔드 결정 채택(2026-11-14). 화면은 승인 거절과 구분 표시 | 3-5 ReplenishmentRequest |
 | A-31 | 기안 금액 정정(`LINE_TERMS_CHANGED.requestedKrw`)이 들어오면 권한 판정용 기안 총액을 다시 계산하고 25건 전부 재판정. 부결 · 취소는 총액을 줄이지 않음(R-CP-06 과 구분) | 원본에 기안 정정 절차 없음. 정정은 기안 금액 자체가 바뀐 것이고, 부결은 금액이 아니라 결정이 바뀐 것이라는 구분(W02_TASK 3-3 해석의 연장). 1단계 백엔드 결정 채택(2026-11-14). 시연 시나리오에는 금액 정정이 없음(②는 집행일 정정만) | R-AUTH-01 · R-AUTH-06 |
 | A-32 | 재무팀 공식 전망 `week`(월요일) = **그 월요일에 끝나는 기간**(직전 화 ~ 해당 월, 첫 주 7/1 ~ 7/6). 재전망과의 주간 대조값 = 재전망의 `week` 날짜 종가, 하회 여부 = 기간 내 영업일 중 종가 < 30억 이 있는지 | `week` 정의가 원본에 없음(미확인). 근거: `forecast_date` 6/30, `week` 13개 모두 월요일, 첫 행 종가 = 6/30 자금일보 종가 + 유입 − 유출이고 13행이 직전 종가에서 이어짐(집계 확인) → 7/1 부터 빈틈 없이 이어지는 해석. 흐름(유입 · 유출) 대조로는 검증 불가(공식 흐름이 원본 스케줄과 어느 묶음으로도 맞지 않음). 하회를 기간 전체로 보는 이유: covenant 는 매 영업일 판정. 2026-11-14 사용자 결정(S-10 대조)에 따라 기획이 정함 | R-CASH-03 · S-10 비교표 · BE-10 |
-| A-33 | 에이전시가 성과 피 정보 요청에 「정보 제공」으로 모의 회신하면 회신 문구를 계약 `performanceFeeTerms` 에 **모의(MOCK) 값으로** 기록하고 그 정보 요청을 닫는다. 다음 판단안의 「성과 피 조건」 사실은 이 모의 문구가 되고 `unknowns` 에서 G-02 가 빠진다. **문구를 금액 · 비율로 바꾸지 않으며**, 권한 판정(R-AUTH-02)의 연 금액은 계속 "하한 28억"(`lowerBound = true`). 원본 공백 G-02 자체는 해소된 것이 아니다 — S-12 는 "모의 회신으로 보완(원본 공백 그대로)"으로 표시(BE-12) | 원본에 성과 피 산식이 없고(G-02) 회신은 모의다. 회신을 버리면 "정보 제공" 결과가 다음 판단에 반영되지 않고, 숫자로 바꾸면 모의 문구가 사실 · 계산값처럼 보인다(A-23 과 같은 이유). 하한만으로도 권한자는 그룹 CEO/이사회로 확정(28억 > 10억)이라 권한 결과는 바뀌지 않는다. 2단계 백엔드 결정을 검토 후 채택(2026-11-14) | 1-2 ExclusiveContract · 1-3 Event 상대별 효과 · R-AUTH-02 · G-02 |
+| A-33 | 에이전시가 성과 피 정보 요청에 「정보 제공」으로 모의 회신하면 회신 문구를 계약 `performanceFeeTerms` 에 **모의(MOCK) 값으로** 기록하고 그 정보 요청을 닫는다. 다음 판단안의 「성과 피 조건」 사실은 이 모의 문구가 되고, `unknowns` 의 G-02 는 빠지지 않고 "모의 회신으로 보완 — 원본 공백은 그대로"(`FILLED_BY_MOCK`)로 남는다(2026-11-14 보완, 10-1 ⓐ — 첫 채택 때의 "G-02 가 빠진다"를 고침). **문구를 금액 · 비율로 바꾸지 않으며**, 권한 판정(R-AUTH-02)의 연 금액은 계속 "하한 28억"(`lowerBound = true`). 원본 공백 G-02 자체는 해소된 것이 아니다 — S-12 는 "모의 회신으로 보완(원본 공백 그대로)"으로 표시(BE-12) | 원본에 성과 피 산식이 없고(G-02) 회신은 모의다. 회신을 버리면 "정보 제공" 결과가 다음 판단에 반영되지 않고, 숫자로 바꾸면 모의 문구가 사실 · 계산값처럼 보인다(A-23 과 같은 이유). 하한만으로도 권한자는 그룹 CEO/이사회로 확정(28억 > 10억)이라 권한 결과는 바뀌지 않는다. 2단계 백엔드 결정을 검토 후 채택(2026-11-14) | 1-2 ExclusiveContract · 1-3 Event 상대별 효과 · R-AUTH-02 · G-02 |
 | A-34 | SCM 이 보충 검토에 「거절(보충 불가)」로 모의 회신하면 그 건의 보충요청 초안을 승인 절차 없이 `DRAFT → REJECTED`(사유 '보충 불가')로 종결하고, 연결 기안 건의 공급 전망을 `NO_SUPPLY` 로 바꾼다 → 재고 게이트(R-INV-03)에 걸린 건의 권고는 부결 | 원본에 SCM 검토 거절 절차가 없음. 보충이 안 된다는 회신을 받고도 권고를 조건부로 두면 집행일 전 품절 제약(R-INV-03)을 회신 결과로 지우는 셈이다 — 권한자 거절(3-5)과 같은 결과로 둔다. 초안은 현금 약정이 아니라 종결에 권한자 승인이 필요 없다(A-30 과 같은 이유). 권고 변경은 권고일 뿐이고 건의 결정은 여전히 권한자 회신으로만 한다(R-AUTH-05). 2단계 백엔드 결정을 검토 후 채택(2026-11-14) | 3-5 ReplenishmentRequest · 1-3 Event 상대별 효과 · R-INV-03 |
+| A-35 | 작업(Task)의 시작 · 완료 · 취소는 **작업 담당 역할(`ownerRole`)만**, 보충요청 초안 생성은 **SCM 만** 할 수 있다(`AI_AGENT` · `SYSTEM` 은 행위자가 될 수 없음). 서버는 요청의 `actorRole` 이 허용 역할과 다르면 422 `FORBIDDEN_ROLE`, 없으면 422 `VALIDATION` 으로 거부하고 상태를 바꾸지 않는다. SCM 보충 검토 작업(`REPLENISHMENT_REVIEW` · SCM `INFO_REQUEST`)은 `PATCH` 로 완료하지 않고 SCM 보충 검토 회신으로만 닫는다. 이 규칙은 **사람이 `PATCH` 로 처리하는 경우**의 것이다 — 사건의 결과로 규칙 코드가 닫는 작업(수령확인 · 외부 회신 · 재상신 완료 → 재검토 작업 종료)은 3-4 표가 정하고, 이력에 그 사건의 행위자(`MOCK` 회신자 또는 `SYSTEM`)와 사유를 남긴다(2026-11-14 보완) | 원본에 작업 처리 권한 규정이 없다. 작업 담당은 BPMN W02 레인(계약 담당 t1 · t3 · t4 · t5 · t6)과 작업 생성 규칙이 정한 값이고, 작업 완료는 다른 엔티티를 바꾼다(통보 발송 → 계약 `NOTICE_SENT`, 재상신 → 새 승인요청, 집행일 조정 → 권한 재판정). 담당 아닌 역할이 처리하면 책임 경계가 흐려지고 이력의 행위자가 사실과 달라진다. 화면에서만 막으면 API 를 직접 부르는 경로가 남는다(LOG-017 프론트엔드 보고). 2026-11-14 기획 결정 | 1-3 쓰기 행위별 허용 역할 · 3-4 · BE-17 · BE-18 |
+| A-36 | 결정을 확정하지 않는 쓰기 — 사건 입력(통보 · 기안 접수, 회수 지연, 기안 정정, 외부 회신) · 판단안 생성 · 승인요청 상신 — 와 시연 운영 행위(시점 이동 · 시나리오 리셋)는 서버가 호출 역할을 검사하지 않는다. 이력의 행위자는 사건 유형별 고정값(통보 접수 계약 담당 · 기안 접수 마케팅팀 · 회수 지연 재무팀 · 외부 회신 `from`) 또는 `SYSTEM` · `AI_AGENT` 다. 사용자 신원 확인(로그인)은 범위 밖 | 이 쓰기들은 승인 효력을 만들지 않고, 권한자 · 기한 · 공급 제약은 규칙 코드가 정해 누가 눌러도 결과가 같다 — 검사가 없어도 원본 제약(권한 · 기한 · 계약 · 생산능력)이 사라지지 않는다. 시점 이동 · 리셋은 시연 재현 장치다(A-21). 2026-11-14 기획 결정 | 1-3 쓰기 행위별 허용 역할 · DEMO 0-4 |
 
 ## 6. 데이터 공백 (W02_TASK 5절 연결)
 
@@ -665,6 +714,8 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 | G-13 | 캠페인 증분 수요(풀스케일) | 3-6절 | 재고 소진 속도 | 금액 · 수량 환산 안 함, 방향만 |
 
 ## 7. 1단계 구현 반영 · 후속 작업 (2026-11-14)
+
+> 2026-11-14 이후 바뀐 것: 실시간 AI 판단안은 **보류**(사용자 결정 — 시연은 모의 판단안, [9-1](#9-1-사용자-결정--실시간-ai-판단안-보류-시연은-모의)). 아래 7-3 의 프론트 작업은 모두 처리됨(LOG-017).
 
 기준: 백엔드 · 프론트엔드 1단계(커밋 `be79a9d`, `npm run check` 141 테스트 통과 — devlog LOG-002 · LOG-004) 보고와 `app/src/domain/` 코드 대조. 코드 동작은 `workflow.ts` · `authority.ts` · `inventory.ts` · `types.ts` 와 `app/tests/` 를 읽어 확인했다.
 
@@ -730,7 +781,7 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 
 ## 8. 2단계 백엔드 반영 · 완료 조건 점검 · 후속 작업 (2026-11-14)
 
-기준: 백엔드 2단계 보고(미커밋 작업본)와 `app/src/domain/{types,api-types,workflow,assessment,provenance,errors,registry}.ts` · `app/src/server/{service,http}.ts` · `server/db/schema.ts` · `src/app/api/**/route.ts`(24개)를 읽어 대조했다. 실행 확인은 백엔드 보고를 인용했고, 기획이 직접 돌린 것은 `tsc --noEmit`(프론트 진행 중 오류 — 7-2 상태)과 원본 행 수 재계산(1-1)뿐이다. 실시간 AI 경로는 **미확인**(크레딧 부족 400 → 모의 대체만 확인).
+기준: 백엔드 2단계 보고(미커밋 작업본)와 `app/src/domain/{types,api-types,workflow,assessment,provenance,errors,registry}.ts` · `app/src/server/{service,http}.ts` · `server/db/schema.ts` · `src/app/api/**/route.ts`(24개)를 읽어 대조했다. 실행 확인은 백엔드 보고를 인용했고, 기획이 직접 돌린 것은 `tsc --noEmit`(프론트 진행 중 오류 — 7-2 상태)과 원본 행 수 재계산(1-1)뿐이다. 실시간 AI 경로는 **미확인**(크레딧 부족 400 → 모의 대체만 확인) — 2026-11-14 사용자 결정으로 **확인을 보류**하고 시연은 모의 판단안으로 한다([9-1](#9-1-사용자-결정--실시간-ai-판단안-보류-시연은-모의)). 아래 8-3 점검표는 [9-4](#9-4-완료-조건-재판정)에서 다시 판정했다.
 
 ### 8-1. 이번에 문서에 반영한 것
 
@@ -756,7 +807,7 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 | 에이전시 「정보 제공」 → `performanceFeeTerms` 에 회신 문구(MOCK) 기록, G-02 를 판단안 `unknowns` 에서 뺌, 권한 판정 금액은 하한 28억 유지 | **채택 (A-33)**, 조건 1건 → BE-12 | 회신이 다음 판단에 반영되고(완료 조건 1 「바뀐 상태가 다음 판단에 쓰임」), 값은 `모의` 배지로 사실과 구분된다. 문구를 금액으로 바꾸지 않으므로 A-23 과 충돌하지 않는다. 하한만으로도 권한자는 그룹 CEO/이사회. **조건**: 원본 공백 G-02 는 해소된 것이 아니다 — 지금 `GET /api/data-registry` 의 `gaps[].open` 이 G-02 · G-03 · G-08 을 모의 회신 뒤 `false`(해소)로 돌려주므로 "모의 회신으로 보완(원본 공백 그대로)" 상태를 따로 둔다(BE-12) |
 
 ### 8-3. 완료 조건 5개 점검 (PROBLEM.md 4절)
-점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-2단계-백엔드-기준)에 둔다(시연 대응표 0-1 바로 아래). 요지: 조건 1~4 는 **도메인 · API 테스트로는 충족, 화면 연결 · 배포가 남아 "일부"**, 조건 5 는 출처 라벨 · 숫자 출처 검증은 있으나 가정 목록 사본(A-32~A-34 누락) · 공백 상태 표시(BE-11 · BE-12)가 남아 "일부". 제출 가능 판정은 프론트 2단계 · `npm run check` 통과 · docker 배포 뒤.
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-3단계-뒤)에 둔다(시연 대응표 0-1 바로 아래 — 프론트 2단계 뒤 다시 판정, [9-4](#9-4-완료-조건-재판정)). 백엔드 2단계 시점의 판정(기록): 조건 1~4 는 **도메인 · API 테스트로는 충족, 화면 연결 · 배포가 남아 "일부"**, 조건 5 는 출처 라벨 · 숫자 출처 검증은 있으나 가정 목록 사본(A-32~A-34 누락) · 공백 상태 표시(BE-11 · BE-12)가 남아 "일부". 제출 가능 판정은 프론트 2단계 · `npm run check` 통과 · docker 배포 뒤.
 
 ### 8-4. 백엔드 새 작업
 
@@ -765,8 +816,8 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 | **BE-11** | `domain/registry.ts` · `assumptions` 시드 · `server/db/schema.ts` 주석 | 가정 목록 사본에 **A-32 · A-33 · A-34** 추가(문구는 5절). 스키마 주석 "A-01~A-31" 정정 | `GET /api/data-registry` 의 `assumptions` 가 A-01~A-34 34개. S-12 가정 탭에 A-32 가 보인다(지금은 없음 — S-10 비교표 배지가 가리키는 가정이 S-12 에 없는 상태). `tests/api/presets-errors` 의 "가정 31개" 기대값도 34 로 |
 | **BE-12** | `server/views` `registryView` · `api-types` `RegistryView` | 공백 상태를 `open: boolean` 대신(또는 함께) `status: 'OPEN' \| 'FILLED_BY_MOCK'` 로. 모의 회신으로 채워진 공백(G-02 에이전시 정보 제공 A-33 · G-03 수령확인 · G-08 SCM 회신)은 `FILLED_BY_MOCK` + 처리 문구 "모의 회신으로 보완 — 원본 공백은 그대로". 원본 공백을 "해소"로 돌려주지 않는다 | ① S1-6 뒤 G-03 = `FILLED_BY_MOCK`, 에이전시 `INFO_PROVIDED` 뒤 G-02 = `FILLED_BY_MOCK`, 시드에서는 셋 다 `OPEN`. 어떤 경우에도 G-xx 가 "닫힘/해소"로 오지 않는다 |
 | **BE-13** | `server/views` (`InventoryView.replenishments` · 이력 표시용) | 보충요청 종결 문구를 서버가 준다: `statusText` = "SCM 검토: 불필요로 종결 (승인 거절 아님)" / "SCM 검토: 보충 불가로 종결 (승인 거절 아님)" / "승인 거절" / 그 밖 상태 이름. 화면이 사유 문자열을 파싱하지 않게 한다 | ④-a · SCM 거절 · ④-b 세 경우 `statusText` 가 각각 위 문구 |
-| **BE-14** | `axhub.yaml`(루트) · Dockerfile · 시작 스크립트 | **사용자 결정 대기**: 원본 CSV 포함 방식 A/B/C([TECH_STACK 5절](TECH_STACK.md#5-남은-결정--후속-작업)). 결정 뒤 `deploy_method: docker` · `database: engine: postgres` 로 바꾸고, 시작 시 `db:migrate`(tsx 를 런타임에 쓰면 devDependencies 포함 또는 JS 빌드), B 면 배포 후 `db:load-raw` 1회 | 배포 주소에서 `GET /api/meta` 가 `persistence: POSTGRES` 와 `rawSource`(A 면 `FILES`, B 면 `DB`)를 돌려준다. 원본 CSV 가 웹 공개 경로로 내려받아지지 않는다 |
-| **BE-15** | `server/ai/*` (코드 변경 없을 수 있음) | **사용자 조치 대기**(API 크레딧 충전). 충전 뒤 실시간 판단안 1회 실행: `aiMode = LIVE`, `stopReason` 기록, `provenance.ok`, 권고 대안이 enum 안 | 실시간 판단안 1건이 저장되고 S-05 에 `실시간` 표시. 실패하면 지금처럼 `MOCK` + `fallbackReason` (오류 원문 · 키 없음) |
+| **BE-14** | `axhub.yaml`(루트) · Dockerfile · 시작 스크립트 | **사용자 결정 대기**: 원본 CSV 포함 방식 A/B/C([TECH_STACK 5절](TECH_STACK.md#5-남은-결정--후속-작업)). 결정 뒤 `deploy_method: docker` · `database: engine: postgres` 로 바꾸고, 시작 시 `db:migrate`(tsx 를 런타임에 쓰면 devDependencies 포함 또는 JS 빌드), B 면 배포 후 `db:load-raw` 1회 | 배포 주소에서 `GET /api/meta` 가 `persistence: POSTGRES` 와 `rawSource`(A 면 `FILES`, B 면 `DB`)를 돌려준다. 원본 CSV 가 웹 공개 경로로 내려받아지지 않는다. **(2026-11-14 추가)** 배포 런타임에 `AOURA_AI_MODE=mock` 을 두어 `aiMode: MOCK` — 크레딧 없는 키로 실시간 호출을 시도해 실패 경고(`fallbackReason`)가 시연 화면에 뜨지 않게 한다(9-1) |
+| **BE-15** | `server/ai/*` (코드 변경 없을 수 있음) | **보류 (2026-11-14 사용자 결정 — 9-1)**. 시연 필수 아님, 시연은 모의 판단안. 다시 열면: 크레딧 충전 뒤 실시간 판단안 1회 실행: `aiMode = LIVE`, `stopReason` 기록, `provenance.ok`, 권고 대안이 enum 안 | 실시간 판단안 1건이 저장되고 S-05 에 `실시간` 표시. 실패하면 지금처럼 `MOCK` + `fallbackReason` (오류 원문 · 키 없음) |
 | **BE-16** | `server/scenarios.ts`(S1_6 이후 프리셋) · 시나리오 점검 | ① 정상 흐름에서 `DOCUMENT_CONDITIONS`(계약 담당, 7/13 통보 발송과 함께) · `REPORT_TO_GROUP`(Masil 대표, 7/14) 작업을 완료하도록 재생 단계 추가. `S1_7` 점검 항목에 "OVERDUE 작업 0" 추가 | `S1_7` 프리셋 7/18 이동의 `transitions` = 기안 건 5행(CONFIRMED 1 · CANCELLED 4)뿐, OVERDUE 작업 0. `S4` 프리셋(7/20)에도 OVERDUE 작업이 없다. 두 작업을 완료하지 않고 7/18 로 가면 두 작업이 OVERDUE 가 되는 것은 그대로(테스트로 유지) |
 
 ### 8-5. 프론트엔드 새 작업 (2단계 FE-01~06 과 함께 또는 바로 뒤)
@@ -778,3 +829,134 @@ R-CP-05 권고 등급(건 단위, 확대 대상 캠페인의 공식 cp 부호만
 | **FE-09** | S-02 외부 회신 · S-03 통보 탭 · S-07/S-09 | 양식 조합 제한: SCM · Corevia 에는 「수령확인」을 숨김, SCM 「정보 제공」이면 보충 필요 여부 필수, 입고 예정일은 SCM · Corevia 만. 응답 `transitions` · `createdTasks` 를 결과 패널로. 404(맞는 열린 작업 없음) · 422 메시지는 그대로 표시. 에이전시 정보 제공 뒤 S-03 성과 피 칸은 `모의` 배지 문구(G-02 링크 유지) | SCM 거절 회신 뒤 S-04 PLAN-011 권고가 부결로, 보충요청 문구가 "보충 불가로 종결"로 보인다 |
 | **FE-10** | S-12 | 가정 탭은 API 목록 그대로(BE-11 뒤 A-01~A-34). 공백 탭은 `status` 2가지 표시 — `OPEN` "미확인", `FILLED_BY_MOCK` "모의 회신으로 보완 — 원본 공백 그대로"(BE-12 뒤). "해소" 문구는 쓰지 않는다 | ① S1-6 뒤 G-03 이 "모의 회신으로 보완"으로 보이고 사라지지 않는다 |
 | **FE-11** | 공통 오류 처리 | `{error:{code,message,details?}}` 의 `message` 를 그대로 표시. `CONFLICT`(409) 는 "상태가 바뀌어 다시 만들어야 합니다" + [다시 만들기], `INTERNAL`(500) 은 일반 문구 + 재시도. 오류 뒤 숫자를 캐시로 대신 보여주지 않는다(S-01 오류 규칙) | 판단안 생성 중 다른 탭에서 회신하면 409 안내가 보이고 상태가 섞이지 않는다 |
+
+## 9. 2단계 프론트엔드 반영 · 쓰기 권한 · 실시간 AI 보류 (2026-11-14)
+
+기준: 프론트엔드 2단계 보고(devlog LOG-017), devlog README 「열린 확인 필요」, DD-035~039, 코드 읽기(`app/src/app/**` — `assessments/[id]/page.tsx` · `events/event-forms.tsx` · `scenarios/page.tsx` · `tasks/task-actions.tsx`, `app/src/components/**` — `approval/reply-panel.tsx` · `shell/clock-dialog.tsx` · `mutation/result-dock.tsx`, `app/src/server/service.ts` · `domain/workflow.ts` 의 쓰기 경로). 실행 결과는 메인 세션 재검증(LOG-017, 14:29 — `npm run check` 222 통과 · 2 건너뜀, `next build` 종료 0, 화면 캡처 42장은 저장소 밖)을 인용했고, 기획은 이번에 아무것도 실행하지 않았다.
+
+### 9-1. 사용자 결정 — 실시간 AI 판단안 보류, 시연은 모의
+
+- **결정 (2026-11-14, 사용자)**: AI 판단안 문장은 이 과제 시연의 필수 요건이 아니다. 실시간 AI 확인(BE-15)은 보류한다. 판단안 문장은 모의(결정적 문장)로 시연하고 화면에 `모의` 표시를 유지한다.
+- **시연 흐름에 영향이 없는 이유**: 계산(공헌이익 · 재고 커버 · 재전망) · 권한자 · 건별 권고 · 상태 전이는 규칙 코드가 정한다(1-3 Assessment — AI 가 정하는 것은 문장과 계약 대안 권고 하나). 모의 모드에서도 도구 6개를 코드가 같은 입력으로 실행하고(`toolCalls[].actor = 'SYSTEM'`), 숫자 출처 검증을 거친 판단안이 승인요청 → 회신 → 상태 변경 → 다음 판단으로 이어진다. 모의 모드의 계약 대안 권고도 규칙이 정한다.
+- **운영**: 배포 · 시연 환경은 `AOURA_AI_MODE=mock` 으로 실시간 호출을 시도하지 않는다(BE-14 수용 기준에 추가). 키(secret)는 등록된 채로 둔다 — 다시 열 때 바로 쓸 수 있게.
+- **반영한 곳**: 1-3 Assessment · 0 표기(실시간 문장 표지) · 7 · 8 머리말 · 8-4 BE-15 · [TECH_STACK 2-3 · 2-4 · 5 · 5-1](TECH_STACK.md#2-4-claude-사용-방식) · [DEMO 1 시드 · 0-2](DEMO_SCENARIOS.md) · [SCREEN_SPEC 0-1 · S-05](SCREEN_SPEC.md).
+
+**과제 문서와의 대조** — 완료 조건 5개와는 충돌하지 않는다. 다만 **심사 관점 · 자기점검 항목 하나와 긴장**이 있다(근거는 원문 인용).
+
+| 출처 | 원문 (요지) | 판정 |
+|---|---|---|
+| PROBLEM 4절 완료 조건 1~5 | 입력 → 승인 → 상태 변경, 세 상황, 확장, 부서 영향, 원본 · 가정 구분 — **AI 언급 없음** | 충돌 없음 |
+| PROBLEM 4-1 · `A01.html` 3절 여섯 관점 「AI · 사람 · 도구의 운영 역할」 | "AI가 받는 정보 · 만드는 결과, 사람의 승인 · 예외 판단, 도구 실행과 계획 · 상태 갱신으로 이어지는 **실제 흐름**" | **긴장**. 모의 모드에서 판단안 문장을 쓰는 것은 모델이 아니라 결정적 코드다. 보여줄 수 있는 것: AI 에 주는 입력(도구 6개 반환값), 출력 계약(`submit_assessment` 스키마 · 권고 enum 제한), 숫자 출처 검증, 사람 승인, 도구의 상태 변경. 실제 모델 출력은 없다 |
+| `A01.html` 심사 관점 「작동하는 운영 시스템」 | "운영 중 **AI의 역할이 실제 판단과 처리에 사용**되고, 사람 · 도구와 연결되어 …" | **긴장** (가장 직접적) |
+| `A04.html` 자기점검 · 설명 문항 | "운영 중 AI가 맡는 역할과 **실제 입력 · 출력**이 사람의 결정 · 도구 실행 · 후속 처리에 쓰이는 모습을 보여줄 수 있다", "실제 작동 · 모의 처리 · 설계 단계인 부분을 구분했다" | **긴장** — 단, 구간을 정직하게 구분하면 답할 수 있다(아래 표) |
+| `A01.html` 5절 · `A03.html` FAQ | "승인 · 발주 · 통지 등 **외부 업무는 모의 처리**로 시연할 수 있습니다" | 모의 허용 대상은 외부 업무다. AI 판단 지원은 외부 업무가 아니라서 **이 문구를 AI 모의의 근거로 쓸 수 없다** |
+| PROBLEM 7절 자기점검 | "여섯 관점(… AI/사람/도구 역할 …)을 실제 사례로 보여줄 수 있다" | 위와 같은 긴장 |
+
+제출 설명에서 쓸 구간 구분(`A04` 정의 — 실제 작동 = 입력에 따라 구현이 직접 처리, 모의 처리 = 가상의 외부 회신 · 승인 · 집행, 설계 단계 = 설명 · 명세):
+
+| 구간 | 구분 | 증거 |
+|---|---|---|
+| 규칙 계산 · 권한 판정 · 기한 감시 · 상태 전이 · 도구 6개 실행 · 숫자 출처 검증 · 모의 대체 | 실제 작동 | 테스트 222 · 화면 ① 전 구간(LOG-017) · S-05 도구 호출 목록 |
+| 승인 회신 · 외부 회신 · 회수 지연 등 모의 사건 | 모의 처리 | S-06 · S-02 · S-12 모의 목록 |
+| 판단안 문장 (모의 모드) | 모의 처리 — 결정적 문장. 화면 `모의` | S-05 `AI: 모의` |
+| 실시간 AI 문장 생성 (`claude-opus-5-5` + tool use) | **설계 단계** — 코드 · 테스트(모의 클라이언트)는 있으나 실제 호출 성공 기록 없음(400 크레딧 부족 1회) | TECH_STACK 2-3 · 2-4, `server/ai/*` |
+
+- **사용자 확인 권장 (결정은 사용자)**: (a) 지금 결정대로 — 제출 설명에 AI 문장 구간을 「설계 단계」로 적는다. (b) 크레딧을 충전할 수 있으면 BE-15 를 **증거용 1회만** 실행해 기록을 남기고(실시간 판단안 1건, `provenance.ok`), 시연은 그대로 모의로 한다 — 이 경우 위 표의 마지막 행이 「실제 작동(1회 확인)」이 된다. 기획 의견: (b) 가 심사 관점의 긴장을 줄이는 가장 작은 조치다. (b) 를 하지 않아도 완료 조건 판정(9-4)은 바뀌지 않는다.
+
+### 9-2. 프론트엔드가 문서와 다르게 만든 6건 — 판정 (LOG-017)
+
+| # | 다른 점 (코드 위치) | 판정 | 이유 · 조건 | 반영 |
+|---|---|---|---|---|
+| ① | 기안 접수에 건 범위 선택 없음 — 25건 전체 접수 (`events/event-forms.tsx`). 백엔드가 범위 선택을 검토 중 | **문서를 코드에 맞춤 — 범위 선택을 없앤다** | 권한 판정 기안 총액 = 25건 합(R-AUTH-01). 일부만 접수하면 7/17 묶음(70,902,290 < 1억)처럼 총액이 1억 이하로 내려가 건별 1천만 이하 건이 마케팅팀 전결로 바뀐다 — 입력 범위로 승인 권한 제약을 없애는 셈(CLAUDE.md 규칙 7). 판단 범위는 S-04 행 선택 → 판단안이 나눈다. **백엔드는 범위 선택을 넣지 않는다**(BE-20) | 1-3 Event · SCREEN_SPEC S-02 · 4절 · DEMO S1-1 |
+| ② | 시점 이동 모달의 시연 시각 바로가기 6개(7/10 14:00 · 7/13 10:00 · 7/14 11:00 · 7/17 09:00 · 7/18 00:00 · 7/20 09:00, `shell/clock-dialog.tsx`) | **채택** | 입력 편의일 뿐 계산값이 아니고, 미리보기(`GET /api/clock/preview`)를 거쳐야 이동하며 과거는 서버가 409 로 막는다. 조건: 시각은 DEMO_SCENARIOS 의 사건 시각과 같아야 한다. ②(7/14 10:00 · 7/15 15:00)와 ③(7/13 16:00 · 7/15 · 7/16 10:00 · 7/17 15:00) 시각이 빠져 있어 ③ 화면 검증 전에 추가 권장(FE-14) | SCREEN_SPEC S-01 |
+| ③ | S-06 [권한 검증 확인] 버튼 — 권한 없는 역할로 같은 요청에 승인을 실제 전송해 서버 422 문구를 보여줌, 상태 불변 (`approval/reply-panel.tsx`) | **채택** | UI-04 의 「서버 422 를 같은 문구로 표시」와 완료 조건 1 의 권한 경계(R-AUTH-05)를 화면에서 증명하는 유일한 방법이다(버튼 비활성만으로는 서버 검사를 보여줄 수 없음). 조건: `PENDING` 요청 · 권한 없는 역할에서만 보이고, 응답 문구를 그대로 보이며, 상태 버전이 바뀌지 않았음을 표시한다. 서버 검사가 깨지면 실제로 승인돼 버리는 진짜 시험이므로 결함을 숨기지 않는다 — 그게 이 버튼의 목적 | SCREEN_SPEC S-06 · DEMO S1-5 |
+| ④ | 결과 보관함 — 처리한 행이 재조회 뒤 목록에서 사라지는 화면(작업 · 승인함)에서 마지막 결과 패널을 화면 위에 고정 (`mutation/result-dock.tsx`, DD-037) | **채택** | UI-05(쓰기 뒤 결과 패널)를 행이 사라지는 화면에서도 지키는 방법. 조건: 같은 화면(경로)에서만 · 마지막 1건 · 닫기 가능 · 브라우저 메모리라 새로고침하면 사라짐 — 영구 증거는 S-11 처리 이력이다 | SCREEN_SPEC 0-4 |
+| ⑤ | S-13 수용 기준 점검은 **현재 지점(마지막 재생 프리셋)만** (`scenarios/page.tsx`) | **채택 — 「4개 시나리오 전체 진행률」 요구를 뺀다** | 서버 상태가 하나라(DD-039) 다른 프리셋을 점검하려면 그 프리셋을 재생해야 하고, 그러면 지금 상태가 바뀐다. 현재 상태를 다른 프리셋 기준으로 점검하면 ✗ 가 나와 오해를 부른다. 시나리오 전체 통과 증거는 `npm run check` 의 시나리오 테스트(①~④)가 맡는다 | SCREEN_SPEC S-13 |
+| ⑥ | 실시간 AI 근거 문장에 `원본근거해석` 배지 (`assessments/[id]/page.tsx` — `a.mock ? 'MOCK' : 'INTERPRETED'`) | **기각** | `원본근거해석` 은 원본 문구를 근거로 정한 해석이고 근거 문구를 함께 보여야 한다. AI 문장에는 하나의 근거 문구가 없어 원본에 근거한 사실처럼 보인다. 실시간 문장은 출처 배지 대신 「AI 작성」 표지(0 표기). 실시간 경로가 보류라 시연 화면에는 나오지 않음 → FE-12(우선순위 낮음) | 0 표기 · SCREEN_SPEC S-05 |
+
+### 9-3. 쓰기 행위별 허용 역할 — 요지
+
+표는 [1-3 쓰기 행위별 허용 역할](#쓰기-행위별-허용-역할-2026-11-14). 서버가 역할을 검사하는 쓰기는 셋이다.
+1. **승인 회신** — `requiredRole` · 건별 현재 권한자만(원본 정책 · R-AUTH-05, 구현됨).
+2. **작업 상태 변경** — 작업 담당 `ownerRole` 만, `actorRole` 필수(A-35, BE-17). SCM 보충 검토 작업은 `PATCH` 완료 불가 — SCM 보충 검토 회신으로만(BE-18).
+3. **보충요청 초안 생성** — SCM 만, `actorRole` 필수(A-35, BE-17). 백엔드 진행 중 작업본(`domain/permissions.ts` — 미커밋)이 이미 이렇게 막고 있어 문서를 맞췄다.
+
+나머지(외부 회신 입력 · 사건 입력 · 판단안 생성 · 승인요청 상신 · 시점 이동 · 시나리오 리셋)는 결정을 확정하지 않거나 시연 운영 행위라 검사하지 않는다(A-36). 화면은 업무상 행위자 역할에서만 버튼을 보이되, 서버 보장은 위 둘이다. 백엔드가 "기획 결정 필요"로 보고할 `PATCH /api/tasks` 의 근거 없는 경우는 A-35 로 답한다 — **담당 외 역할은 어떤 작업도 처리할 수 없다**(그룹 CEO/이사회가 계약 담당 작업을 처리하는 것도 불가. 상위 권한자가 대신 처리하는 위임 규정은 원본에 없다).
+
+### 9-4. 완료 조건 재판정
+
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-3단계-뒤)(판정 단계에 「로컬 충족」 추가). 요지: 조건 3 · 4 · 5 는 **로컬 충족**(로컬 화면에서 증거 확인, 배포 주소 미확인), 조건 1 · 2 는 **일부**(1: 배포 · 작업 처리 서버 권한 검사 남음, 2: ③ 화면 미검증). 제출 가능 판정은 배포(BE-14 — 원본 CSV 포함 방식 사용자 결정 대기) · ③ 화면 검증(FE-13) · BE-17 뒤.
+
+### 9-5. 백엔드 새 작업
+
+> **상태 (2026-11-14, LOG-022)**: BE-17 · BE-18 · BE-19 · BE-20 **구현됨**(코드 확인: `domain/permissions.ts` · `workflow.ts` `completeTask` · `server/service.ts` `patchTask` · `createReplenishment`, 테스트 `tests/api/role-guard.test.ts`). BE-14 는 사용자 결정 대기, BE-15 는 보류 그대로.
+
+| ID | 파일 | 할 일 | 수용 기준 |
+|---|---|---|---|
+| **BE-17** (진행 중 — 작업본 `domain/permissions.ts` · `tests/api/role-guard.test.ts`, 미커밋) | `server/service.ts`(`patchTask` · `createReplenishment`) · `domain/workflow.ts`(`startTask` · `cancelTask` · `completeTask`) · `tests/api/` | `PATCH /api/tasks/:id` 담당 역할 검사 + `POST /api/replenishment-requests` SCM 검사(A-35). `AI_AGENT` · `SYSTEM` 은 행위자 불가. `actorRole` 필수 — 없으면 422 `VALIDATION`(지금처럼 `ownerRole` 로 채우지 않는다). `actorRole ≠ ownerRole` 이면 422 `FORBIDDEN_ROLE` "권한 없음: 이 작업은 {담당 역할 이름}만 처리할 수 있습니다 (요청 역할 …)". 검사는 상태 변경 전에 끝낸다. 프리셋 재생(도메인 함수 직접 호출)은 담당 역할로 재생되므로 영향 없음을 테스트로 확인 | ① `SEND_NOTICE`(계약 담당)를 `MARKETING_TEAM` 으로 완료 → 422 `FORBIDDEN_ROLE`, 계약 `NOTICE_PENDING` 그대로, `stateVersion` 불변, 이력 추가 없음. `actorRole` 없이 완료 → 422 `VALIDATION`. `CONTRACT_OFFICER` 로 완료 → 200, 계약 `NOTICE_SENT`. 시작 · 취소도 같은 검사. 그룹 CEO/이사회가 Masil 대표 담당 작업(그룹 보고)을 처리해도 422(권한자라도 담당이 아니면 거부). 보충 초안: 마케팅팀 → 422 · 초안 수 · 버전 그대로, `actorRole` 없음 → 422 `VALIDATION`, SCM → 201 초안 3건. `S1_7` 등 모든 프리셋 점검 결과 그대로 |
+| **BE-18** | `domain/workflow.ts`(`completeTask`) · 테스트 | SCM `REPLENISHMENT_REVIEW` · SCM `INFO_REQUEST` 를 `PATCH` 로 `DONE` 하면 409 `INVALID_TRANSITION` "SCM 보충 검토 회신으로 닫습니다 (S-07 · S-09 [보충 검토 회신])". 시작 · 취소(사유)는 허용 | ④ 초안 생성 뒤 SCM 이 `REPLENISHMENT_REVIEW` 를 `PATCH DONE` → 409, 초안 `DRAFT` · 작업 `OPEN` 그대로. SCM 보충 검토 회신으로는 지금처럼 닫힘 |
+| **BE-19** | `domain/registry.ts`(가정 목록 사본) · 테스트 기대값 | 가정 A-35 · A-36 추가(문구는 5절) | `GET /api/data-registry` 의 `assumptions` 가 A-01~A-36 **36개**. `tests/api` 의 34 기대값을 36 으로 |
+| **BE-20** | `server/service.ts`(`postEvent` `EXPANSION_PROPOSAL_RECEIVED`) · `domain/types.ts` 주석 | 기안 접수 범위 선택을 **넣지 않는다**(9-2 ①). payload 에 `lineIds` 가 있으면 422 `VALIDATION` "기안은 25건 전체로 접수합니다 (권한 판정 기안 총액 — R-AUTH-01)". 이벤트 타입 주석의 `lineIds?` 삭제 | `{proposalId, lineIds:['PLAN-001']}` → 422, 상태 불변. `{proposalId}` → 25건 접수(지금 그대로) |
+| BE-14 (보강) | 배포 설정 | 런타임 env `AOURA_AI_MODE=mock`(비밀값 아님) — 8-4 BE-14 수용 기준에 추가 | 배포 `GET /api/meta` 가 `aiMode: MOCK` |
+| BE-15 | — | **보류**(9-1). 사용자가 (b) 를 고르면 그때 1회 실행 | — |
+
+### 9-6. 프론트엔드 새 작업
+
+> **상태 (2026-11-14, LOG-023)**: FE-12 · FE-13 · FE-14 **완료**. FE-13 화면 검증 결과는 [DEMO 0-3](DEMO_SCENARIOS.md#0-3-수용-기준-검증-상태-2026-11-14-3단계-뒤).
+
+| ID | 화면 | 할 일 | 수용 기준 |
+|---|---|---|---|
+| **FE-13** | ③ · ④-b 화면 검증 (진행 중) | 시연 ③ 을 화면 조작만으로: `S3_1` 프리셋(또는 ① S1-4 에서 S-06 그룹 CEO/이사회 반려) → S-02 에이전시 「정보 부족」 → S-05 판단안 v2 → (A) S-07 재상신 완료 → S-06 해지 승인 → 통보 발송 → 7/17 09:00 이동 → 재통보 작업 → 수령확인 / (A') 7/18 이동 → `NOTICE_UNCONFIRMED` / (B) `S3_B` 7/18 → `AUTO_RENEWED` · S-03 위약금 계산기. ④-b 는 SCM 「보충 필요」 → 그룹 CEO/이사회 반려 → PLAN-011 부결 권고 | AC-3-01 ~ AC-3-07 · AC-4-06 ④-b 를 화면에서 확인. ③-A' 화면에 "자동 갱신" 문구 없음(FE-03), S-01 ③-B 빨강 카드, 위약금 9/30 → 1,283,333,333 · 12/31 → 933,333,333 [집계 · 풀스케일 · A-15]. 결과를 DEMO 0-3 「화면 확인」 열에 보고 |
+| **FE-14** | S-01 시점 이동 · S-02/S-03/S-04 판단안 버튼 · S-07 · S-13 | (1) 시연 시각 바로가기에 ② 7/14 10:00 · 7/15 15:00, ③ 7/13 16:00 · 7/15 · 7/16 10:00 · 7/17 15:00 추가(DEMO 시각과 같게) (2) 에이전시(모의) 역할에서 [판단안 만들기] 숨김(A-36 표) (3) BE-17 뒤 S-07 에서 담당 아닌 역할의 422 문구를 그대로 표시(FE-11 공통 처리로 충분한지 확인) (4) S-13 「현재 지점 점검」 옆에 "다른 시나리오는 재생한 뒤 점검 — 시나리오 전체 통과는 `npm run check` 시나리오 테스트" 안내 (5) **BE-17 과 함께 필수**: S-09 [보충 요청 만들기](`analysis/inventory/create-replenishment.tsx`)가 요청에 `actorRole`(현재 역할)을 보내게 한다 — 지금은 `{triggerLineId, skuIds}` 만 보내 BE-17 뒤 422 `VALIDATION` 으로 ④ 시연이 막힌다 | ③ 화면 검증에 바로가기만으로 필요한 시각이 모두 있다. 에이전시 역할로 판단안 버튼이 보이지 않는다. BE-17 뒤 SCM 역할로 ④ 보충 초안 3건이 만들어진다 |
+| FE-12 (선택, 낮음) | S-05 | 실시간 판단안 문장의 `원본근거해석` 배지를 「AI 작성」 표지로 바꾼다(9-2 ⑥). 모의는 `모의` 그대로 | 실시간 판단안(`aiMode = LIVE`)에서 문장 옆에 `원본근거해석` 배지가 없다. 실시간 보류라 시연 영향 없음 |
+
+## 10. 3단계 반영 · 판단 3건 · 재상신 규칙 · 후속 작업 (2026-11-14)
+
+기준: devlog LOG-022(백엔드 3단계) · LOG-023(프론트엔드 3단계) · LOG-025(백엔드 결함 수정), 코드 읽기(`app/src/domain/permissions.ts` · `workflow.ts` `completeTask` · `assessment.ts` · `api-types.ts`, `app/src/server/scenarios.ts` · `service.ts` · `views/index.ts`, `app/src/components/shell/clock-dialog.tsx`), 화면 조작 스크립트(저장소 밖 scratchpad — 밟은 순서만 참고). 기획이 2026-11-14 17:00 경 `npm run check` 를 직접 실행해 **통과**(22 파일 · 1 건너뜀, 259 통과 · 2 건너뜀)를 확인했다. 화면은 직접 돌리지 않았다 — 화면 결과는 LOG-023 인용.
+
+### 10-1. 판단 3건 (프론트엔드 LOG-023 문제 ③ ④ ⑤)
+
+| # | 문제 | 결정 | 이유 | 작업 |
+|---|---|---|---|---|
+| ⓐ | 에이전시 모의 「정보 제공」 뒤 판단안 v2 의 미확인 목록에서 G-02 가 빠진다. S-12 는 "모의 회신으로 보완 — 원본 공백 그대로"인데 판단안은 해소된 것처럼 보인다 | **미확인 목록에 남기고 상태를 단다** — `unknowns[].status = 'FILLED_BY_MOCK'`, 문구 "모의 회신으로 보완 — 원본 공백은 그대로". G-03(모의 수령확인) · G-08(SCM 모의 회신)도 같은 규칙. S-12 와 같은 판정 함수를 쓴다 | 원본 공백은 모의 회신으로 없어지지 않는다(A-33, CLAUDE.md 규칙 5). 같은 공백이 화면마다 다른 상태로 보이면 원본 · 모의 구분(완료 조건 5)이 흐려진다. 「확인한 사실」에는 모의 값이, 「미확인」에는 "모의로 보완"이 함께 있어야 권한자가 그 값이 원본이 아님을 안다 | BE-21 · FE-15. 1-3 Assessment · A-33 · SCREEN_SPEC S-05 · DEMO AC-3-09 |
+| ⓑ | ④ 프리셋(`S4`)에 PLAN-011 판단안이 없어 AC-4-06 "판단안 버전이 올라간다"를 보이려면 회신 전에 v1 을 먼저 만들어야 한다 | **프리셋에 v1 을 넣는다** — `S4` 재생이 보충 초안을 만들기 전에 PLAN-011 판단안(모의, v1 — 조건부 권고)을 기록한다. 구현 전까지는 시연 절차에서 [선택 건 판단안 만들기]로 v1 을 먼저 만든다(DEMO 0-6 진행표에 단계 있음) | DEMO S4-2 의 순서가 "판단(게이트 결과 · 보충 제안) → 보충 초안"이다. 지금 프리셋은 초안만 있고 그 근거 판단이 없어 흐름이 거꾸로다. 프리셋에 넣으면 시연이 한 단계 줄고 `S4` 점검 항목으로 확인할 수 있다. 판단안은 어떤 상태도 바꾸지 않으므로(1-3) 다른 점검 결과에 영향이 없다 | BE-24. DEMO 5절 프리셋 · AC-4-06 |
+| ⓒ | ③ 분기 A 에서 재상신을 끝내도 「기한 전 재검토」 작업이 열린 채 남아 기한 경과로 보인다. 승인 뒤 「승인조건 문서화」도 같다 | **「기한 전 재검토」는 재상신 완료 시 자동 종료(`CANCELLED`, 시스템 행위자 + 사유)**. **「승인조건 문서화」는 자동으로 닫지 않고** 시연 절차에 완료 단계를 넣는다(①의 S1-6 과 같은 처리) | 재검토는 재상신을 위한 준비라 재상신이 끝나면 할 일이 없다 — 열린 채 두면 끝난 일이 밀린 것으로 보인다. 완료가 아니라 취소인 이유는 사람이 완료를 기록하지 않았기 때문(3-4). 승인조건 문서화는 BPMN t4 의 사람 업무라 시스템이 했다고 기록하면 거짓이다 — 하지 않으면 OVERDUE 로 보이는 것이 맞다. 백엔드 의견(LOG-025)과 같다 | BE-23. 3-1 · 3-4 · A-35 · DEMO S3-3 · AC-3-10 |
+
+### 10-2. 재상신 권고 · 자동 갱신 경고 — 기준 확정
+
+- **재상신 권고 결정**: 규칙 전문은 [1-3 ApprovalRequest 「재상신 근거 판단안 · 권고 결정」](#approvalrequest). 요지 — 근거 판단안 = 지정한 것 또는 최신 계약 판단안, 권고 = 그 판단안의 권고(상신자 지정이 있으면 그 값, 다르면 표시), **판단안이 하나도 없으면 422 로 거부**. LOG-025 구현과의 차이는 두 가지: ① 판단안이 없을 때 지금은 이전 권고를 유지한다 → 거부로 바꾼다 ② 상신자 지정 결정이 판단안과 다를 때 지금은 표시가 없다 → 이력 사유 · `proposedSource` 를 더한다(BE-22).
+- **자동 갱신 위험 경고의 「다음 행동」**: 계약 상태별 표는 [SCREEN_SPEC 0-3-1](SCREEN_SPEC.md#0-3-1-자동-갱신-경고의-다음-행동--계약-상태별-2026-11-14-log-025-구현-확인). LOG-025 구현(`autoRenewalNextAction`)을 코드로 확인했고 표와 같다 — 추가 작업 없음.
+
+### 10-3. 3단계 구현 반영 (문서 정정)
+
+| # | 항목 | 처리 | 반영한 곳 |
+|---|---|---|---|
+| 1 | SCREEN_SPEC S-01 「8/14(10건) · 9/11(10건)」 | **오기 정정** — 원본 `mkt_budget_plan_ms.csv` 를 `contract_deadline` 으로 묶어 직접 집계: 7/17 5건 70,902,290 · 8/14 12건 80,734,739 · 9/11 8건 29,166,243, 합 25건 180,803,272 [집계 · 표본] | SCREEN_SPEC S-01 |
+| 2 | 새 API · 필드 (LOG-022) | `GET /api/receivables` · `AuditRowView` · 보충요청 행 `amount` · `unitCost` · `paymentDate` · 비교표 `changedFromV1` · `v1Recalculated` · `v1BelowDays` · `diffNotesSourced` · `cashEvents` · `actorRole` 필수 — `api-types.ts` 로 확인해 옮김 | SCREEN_SPEC 4절 · S-02 · S-10 · S-11 |
+| 3 | 3-4 「보충 검토 작업 완료 → 보충요청 상신」 | BE-18 구현(회신으로만 닫힘, `PATCH` 완료 409)에 맞게 문장을 고치고 "구현됨" 표시. 다른 처리의 결과로 닫히는 작업 표 추가 | 3-4 |
+| 4 | BE-17~20 · FE-12~14 | 구현 · 완료 표시 | 1-3 쓰기 행위별 허용 역할 · 9-5 · 9-6 |
+| 5 | 시연 시각 바로가기 12개 · 반려 배너 · 「1년 배분 선점」 박스 · S-07 [권한 검증 확인] · 「AI 작성」 표지 | 채택 — 명세에 반영 | SCREEN_SPEC S-01 · S-03 · S-07 |
+
+### 10-4. 백엔드 새 작업
+
+| ID | 파일 | 할 일 | 수용 기준 |
+|---|---|---|---|
+| **BE-21** | `domain/assessment.ts`(`unknownIds` · `gap`) · `domain/types.ts`(`Assessment.unknowns`) · `server/views`(`gapStatus` 를 도메인에서 함께 쓰게) · 테스트 | 판단안 `unknowns` 항목에 `status: 'OPEN' \| 'FILLED_BY_MOCK'` · `statusText` 추가. 모의 회신으로 채워진 공백(G-02 · G-03 · G-08)을 목록에서 빼지 않는다. 판정은 S-12 와 같은 함수 | ③ `S3_1` → 에이전시 「정보 제공」 → 계약 판단안: `unknowns` 에 G-02 가 있고 `status = FILLED_BY_MOCK`, 사실 「성과 피 조건」 라벨 `MOCK`, R-AUTH-02 `lowerBound = true` 그대로. 에이전시 「정보 부족」이면 G-02 `OPEN`(AC-3-02 그대로). ① 수령확인 뒤 계약 판단안의 G-03 = `FILLED_BY_MOCK`. `GET /api/data-registry` 의 같은 공백 상태와 일치 |
+| **BE-22** | `domain/workflow.ts`(`completeTask` `RESUBMIT`) · `server/views`(`ApprovalView`) · `api-types.ts` · `tests/api/s3-resubmit.test.ts` | (1) 계약 판단안이 하나도 없으면 재상신 거부: 422 `INFO_MISSING`, 상태 불변 — 이전 권고 유지(③ 순위)를 없앤다 (2) 상신자 지정 결정이 근거 판단안 권고와 다르면 승인요청 생성 이력 사유에 그 사실을 남기고 `ApprovalView` 에 `proposedSource: 'ASSESSMENT' \| 'SUBMITTER'` · `assessmentDecisionText`(판단안 권고 문구) | 판단안 없이 도메인 `completeTask(RESUBMIT)` → 422 `INFO_MISSING`, 작업 · 계약 · 승인요청 불변. 판단안 v2(권고 C) 뒤 지정 없이 재상신 → `proposed = TERMINATE` · `proposedSource = ASSESSMENT`(지금 테스트 그대로). `proposedDecision: 'RENEGOTIATE'` 지정 → `proposed = RENEGOTIATE` · `proposedSource = SUBMITTER` · 이력 사유에 "상신자 지정". 기존 도메인 시나리오 테스트(AC-3-03)는 재상신 전에 판단안을 기록하도록 고친다 |
+| **BE-23** | `domain/workflow.ts`(`completeTask` `RESUBMIT`) · `domain/registry.ts`(A-35 문구 사본) · 테스트 | 계약 `RESUBMIT` 완료 시 같은 계약의 열린 `REVIEW_BEFORE_DEADLINE` 작업을 `CANCELLED` 로 닫는다(이력 `actorRole = SYSTEM` · `actorKind = SYSTEM`, 사유 "재상신 완료로 종료 — …"). 이미 `DONE` 이면 그대로. 가정 목록 사본의 A-35 문구를 5절과 맞춘다 | ③ 분기 A: 재상신 완료 응답 `transitions` 에 재검토 작업 `→ CANCELLED`(SYSTEM) 1행. 7/18 이동 뒤 `OVERDUE` 작업에 `REVIEW_BEFORE_DEADLINE` 없음. 재상신이 다시 반려되면 새 재검토 · 재상신 작업 각 1건. `DOCUMENT_CONDITIONS` 는 자동으로 닫히지 않는다(완료하지 않으면 7/17 뒤 OVERDUE — 테스트로 고정) |
+| **BE-24** | `server/scenarios.ts`(`s4` · `PRESETS` 설명 · `checkScenario` ④) · 프리셋 회귀 테스트 기대값 | `S4` 재생에서 7/20 09:00 이동 뒤 · 보충 초안 전에 PLAN-011 모의 판단안(v1)을 기록. `S4` 점검에 "PLAN-011 판단안 v1 · 권고 조건부" 항목 추가. `next` 안내를 "SCM 역할로 보충 검토 회신 → PLAN-011 판단안 다시 만들기(v2)"로 | `POST /api/scenarios/S4/reset` 뒤 `GET /api/assessments?subjectId=PLAN-011` 이 1건(version 1, PLAN-011 권고 `CONDITIONAL`, `mock = true`). SCM 「거절」 또는 ④-b 권한자 반려 뒤 판단안을 다시 만들면 version 2 · PLAN-011 권고 `REJECT`. 다른 프리셋 9개 점검 결과 불변 |
+| BE-14 | 배포 | **사용자 결정 대기** 그대로 — 원본 CSV 포함 방식 A/B/C([TECH_STACK 5절](TECH_STACK.md#5-남은-결정--후속-작업)) · `axhub.yaml` 제안 적용 | 8-4 · 9-5 그대로 |
+| BE-15 | 실시간 AI | **보류** 그대로 — 사용자 결정 대기(9-1 의 (a) · (b)) | — |
+
+### 10-5. 프론트엔드 새 작업
+
+| ID | 화면 | 할 일 | 수용 기준 |
+|---|---|---|---|
+| **FE-15** (BE-21 뒤) | S-05 미확인 · 공백 구역, S-03 탭 3 판단안 요약 | `unknowns[].status` 가 `FILLED_BY_MOCK` 이면 `미확인` 칩 대신 `모의` 배지 + `statusText`. 문구는 서버 값(S-12 `GapStatusCell` 과 같은 표시) | A-33 변형 화면: 판단안 v2 의 미확인 목록에 G-02 가 "모의 회신으로 보완 — 원본 공백은 그대로"로 보이고, S-12 공백 탭과 문구가 같다. "해소" 문구 없음 |
+| **FE-16** (BE-22 뒤, (2)는 낮음) | S-07 재상신 양식 · S-06 요청 상세 | (1) 재상신 양식에서 고른 근거 판단안의 버전 · 권고를 보인다(기본 = 최신 판단안) (2) `proposedSource = 'SUBMITTER'` 요청에 "상신자 지정 — 판단안 권고와 다름" 표시 (3) 422 `INFO_MISSING` 문구는 FE-11 공통 처리로 그대로 | ③ 분기 A 재상신 양식에 "ASM-003 · v2 · 권고 C 해지 통보"가 보이고, 만들어진 요청 상세의 권고가 「해지 통보」다 |
+| **FE-17** (BE-23 · BE-24 뒤, 확인만) | S-07 · S-13 | 재상신 결과 패널에 재검토 작업 자동 종료 행이 서버 `displayText` 로 보이는지, `S4` 카드의 `next` 안내가 서버 값으로 바뀌는지 확인(코드 변경이 없을 수 있음) | ③ 분기 A 재상신 뒤 S-07 열린 작업에 「기한 전 재검토」가 없다. ④ 프리셋 직후 S-04 PLAN-011 에 판단안 v1 링크가 있다 |
+
+### 10-6. 완료 조건 재판정
+
+점검표는 [DEMO_SCENARIOS 0-2](DEMO_SCENARIOS.md#0-2-완료-조건-점검-2026-11-14-3단계-뒤). 요지: 5개 모두 **로컬 충족**(로컬 화면에서 증거 확인, 배포 주소 미확인). 「충족」으로 올리려면 **배포**(BE-14 — 사용자 결정 대기)와 배포 주소에서 ①~④ 1회 실행이 남았다. BE-21~24 · FE-15~17 은 표시 · 절차를 다듬는 작업으로, 완료 조건 판정을 막지 않는다(그 전에는 DEMO 0-6 진행표의 대체 단계로 시연한다).
+

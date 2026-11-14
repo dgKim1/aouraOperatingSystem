@@ -1,11 +1,10 @@
 /**
  * 보충요청 목록 (S-07 · S-09) — 상태 + 종결 구분(FE-04).
- * REJECTED 가 같은 상태라도 이력의 이전 상태로 나눈다: DRAFT → REJECTED = "SCM 검토: 불필요로 종결 (승인 거절 아님)" · SUBMITTED → REJECTED = "승인 거절".
+ * 종결 문구(승인 거절 · SCM 불필요 종결 · SCM 보충 불가 종결)는 서버 statusText(BE-13), 금액 · 단가 · 예상 지급일은 서버 Sourced 값 그대로.
  */
 import Link from 'next/link';
-import { MoneyValue } from '@/components/badges/values';
+import { MoneyValue, TextValue } from '@/components/badges/values';
 import { RoleChip } from '@/components/common';
-import { MASIL_FILES } from '@/domain/files';
 import type { InventoryView } from '@/domain/api-types';
 import { cn } from '@/lib/utils';
 import { getAudit } from '../../_data/views';
@@ -48,9 +47,14 @@ export async function ReplenishmentList({ items }: { items: InventoryView['reple
                 </td>
                 <td className="p-2">
                   <span className="text-xs tabular-nums">{r.finalQty.toLocaleString('ko-KR')}EA</span>{' '}
-                  <MoneyValue m={{ value: r.amountKrw, label: 'AGGREGATED', refs: [{ file: MASIL_FILES.purchaseOrders, column: 'amount_krw' }], scale: 'FULL', method: '최종 수량 × 기발주 단가(amount_krw ÷ order_qty) — R-INV-04', assumptionIds: ['A-17', 'A-18'] }} />
+                  <MoneyValue m={r.amount} />
+                  <div className="text-[11px] text-zinc-600">
+                    단가 <MoneyValue m={r.unitCost} />
+                  </div>
                 </td>
-                <td className="p-2 font-mono text-xs">{r.expectedPaymentDate}</td>
+                <td className="p-2 text-xs">
+                  <TextValue t={r.paymentDate} />
+                </td>
                 <td className="p-2">
                   <RoleChip role={r.requiredRole} />
                 </td>
