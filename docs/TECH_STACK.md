@@ -2,6 +2,7 @@
 
 > 결정일: 2026-11-12 · 대상: Aoura 운영 시스템 (W02 인플루언서 계약과 캠페인 집행)
 > 이 문서는 제출 설명서의 "기술 · 구조를 정한 이유"의 근거다. 결정을 바꾸면 이 문서를 먼저 고친다.
+> **2026-11-14 갱신**: 백엔드 2단계(DB · API 24개 · AI 에이전트) 반영 — 4절 실제 폴더 구조, 5절 남은 결정(원본 CSV 의 docker 포함 방식 **사용자 결정 대기**), 5-1 로컬 개발 DB · 환경변수 이름, 2-4 모의 대체 방식, 2-5 원본 적재 테이블 일반화.
 
 ## 1. 결정 요약
 
@@ -42,11 +43,14 @@
 - SDK: `@anthropic-ai/sdk` (공식). OpenAI 호환 shim · 직접 fetch 사용 안 함.
 - 모델: `claude-opus-5-5`, thinking `adaptive`, effort 는 단계별로 명시(기본 `medium`).
 - 도구: 우리가 정의한 조회 · 계산 · 생성 도구만(DB 조회, 규칙 엔진 호출, 승인요청/작업 생성 제안). `strict: true` 스키마.
-- `stop_reason` 확인(`refusal` 포함) 후 결과를 사용. 서버 측 fallback 설정은 구현 시 함께 적용.
+- `stop_reason` 확인(`refusal` · `max_tokens` · `pause_turn`, 제출 없는 종료는 한 번 재촉) 후 결과를 사용. **대체는 SDK 의 fallback 설정이 아니라 우리 코드의 모의 대체**로 한다(2단계 구현): 실시간 결과가 실패 · 거절이거나 숫자 출처 검증(판단안 숫자는 도구 반환값만)을 통과하지 못하면 결정적 모의 판단안으로 바꾸고 `aiMode = MOCK` · `fallbackReason` 을 남긴다(오류 원문 · 키는 기록하지 않음). 베타 fallback 기능은 쓰지 않는다(비베타 대안이 없고, 모의 대체가 같은 역할).
+- 도구 6개(`get_facts` · `get_rule_results` · `get_alternatives` · `get_open_gaps` · `get_claims` · `submit_assessment`), 상태를 바꾸는 도구는 없다. AI 가 고르는 것은 계약 대안 권고 하나(enum 제한)와 문장뿐 — 숫자 · 권한자 · 건별 권고는 규칙 코드(`domain/assessment.ts`).
+- 실시간 경로 확인: 2026-11-14 1회 호출이 API 크레딧 부족(400)으로 실패 → 설계대로 모의 대체 확인. **실시간 판단안 생성은 미확인**(크레딧 충전 뒤 확인 — ONTOLOGY BE-15).
 - 키가 없거나 호출 실패 시 **모의(mock) 모드**로 동작해 시연이 끊기지 않게 한다(모의 결과는 화면에 [모의] 표시).
 
 ### 2-5. 데이터 원칙
-- 원본 CSV(`|` 구분, 원 · VAT 제외)는 **읽기 전용 원본 테이블**로 적재하고 파일 경로 · 행 출처를 남긴다. 원본 파일은 수정하지 않는다.
+- 원본 CSV(`|` 구분, 원 · VAT 제외)는 **읽기 전용 원본 테이블**로 적재하고 파일 경로 · 행 출처를 남긴다. 원본 파일은 수정하지 않는다. 2단계 구현은 파일별 테이블 대신 `raw_files`(파일 목록) + `raw_rows`(`src_file` · `src_row` · 원문 jsonb) 두 테이블로 일반화했다 — 17 파일 24,290행([ONTOLOGY 1-1](ONTOLOGY.md#1-1-원본-적재-테이블-읽기-전용)).
+- 운영 테이블은 조회용 핵심 열 + 도메인 객체 전체 `data` jsonb, 처리 이력 · 사건은 추가만, `sim_state` 1행의 `version` 으로 낙관적 잠금([ONTOLOGY 1-3 DB 스키마 원칙](ONTOLOGY.md#db-스키마-원칙-2단계-구현-2026-11-14-채택)).
 - 가정 · 신규 데이터(계약 원문 발췌, 통보 수령확인, 물류 · CS 비용 등)는 **별도 테이블**에 두고 `source = assumption` 으로 표시.
 - 모든 값은 화면에서 **[원본] · [집계] · [원본 근거 해석] · [가정] · [주장] · [모의]** 배지 중 하나를 단다.
 - 표본(커머스 계열)과 풀스케일(계약 · 재고 · 자금) 금액을 더하거나 곱하지 않는다.
@@ -69,34 +73,72 @@
 | 역할 | 소유 영역 | 하지 않는 것 |
 |---|---|---|
 | **기획** (`aoura-planner`) | `docs/` — 요구사항 · 온톨로지 · 화면/시나리오 명세 · 원본/가정 구분 · 수용 기준 · 결과 검수 | 앱 코드 작성 |
-| **백엔드** (`aoura-backend`) | `app/src/server/`, `app/src/domain/`, `app/drizzle/`, `app/scripts/` — DB 스키마 · 원본 적재 · 규칙 엔진 · 상태 머신 · AI 에이전트 · 도구 · API | 화면 컴포넌트 |
-| **프론트엔드** (`aoura-frontend`) | `app/src/app/`(페이지), `app/src/components/` — 판단 화면 · 승인 UI · 타임라인 · 배지 | 규칙 · 계산 로직 (API 결과만 표시) |
+| **백엔드** (`aoura-backend`) | `app/src/server/`, `app/src/domain/`, `app/drizzle/`, `app/scripts/`, `app/src/app/api/` — DB 스키마 · 원본 적재 · 규칙 엔진 · 상태 머신 · AI 에이전트 · 도구 · API | 화면 컴포넌트 |
+| **프론트엔드** (`aoura-frontend`) | `app/src/app/`(페이지, `api/` 제외), `app/src/components/` — 판단 화면 · 승인 UI · 타임라인 · 배지 | 규칙 · 계산 로직 (API 결과만 표시) |
 | **기록** (`aoura-recorder`) | `docs/devlog/` — 백엔드 · 프론트엔드의 작업 기록(LOG)과 설계 결정(DD): 무엇을 · 왜 · 버린 대안 · 검증 결과 | 코드 · 다른 문서 수정 (읽기만) |
 
-공유 계약: `app/src/domain/types.ts`(온톨로지 타입)와 API 응답 타입은 **백엔드가 소유**, 변경 시 기획 문서와 함께 갱신.
+공유 계약: `app/src/domain/types.ts`(온톨로지 타입)와 API 응답 타입 `app/src/domain/api-types.ts` 는 **백엔드가 소유**, 변경 시 기획 문서와 함께 갱신. 화면 라벨 사본 `app/src/domain/labels.ts`(백엔드)와 `app/src/components/labels.ts`(프론트)가 같은 내용을 가진다 — 새 enum 값이 생기면 둘 다 고쳐야 typecheck 가 통과한다(예: `ESCALATE_NOTICE_UNCONFIRMED`, FE-03).
 
-## 4. 폴더 구조 (예정)
+## 4. 폴더 구조 (2026-11-14 기준 — 백엔드 2단계 작업본, 미커밋)
 
 ```
 삼일PwC_프로젝트폴더/
 ├── CLAUDE.md
-├── axhub.yaml                 # root: app, deploy_method: docker, database: postgres
-├── docs/
-├── app/                       # Next.js 앱 (현재 index.html 은 교체 예정)
-│   ├── src/app/               # 페이지 · route handler (프론트 / API 경계)
-│   ├── src/components/
-│   ├── src/domain/            # 온톨로지 타입 · 규칙 엔진 · 상태 머신 (순수 함수)
-│   ├── src/server/            # DB · AI 에이전트 · 도구 · 서비스
-│   ├── drizzle/               # 스키마 · 마이그레이션
-│   ├── scripts/               # 원본 CSV 적재 (읽기 전용)
-│   └── tests/                 # 단위 · 시나리오 테스트
+├── axhub.yaml                 # 아직 deploy_method: static — docker 전환은 5절(원본 CSV 포함 방식 결정 뒤)
+├── docs/                      # 기획 문서 · devlog/(기록)
+├── app/                       # Next.js 앱
+│   ├── src/app/               # 페이지(프론트) · _data/(1단계 화면용 데이터 — API 전환 뒤 world.ts · registry.ts 삭제 예정)
+│   ├── src/app/api/           # route handler 24개 (백엔드) — 얇은 껍질, 처리는 server/service.ts
+│   ├── src/components/        # 화면 컴포넌트 · labels.ts (프론트)
+│   ├── src/domain/            # 순수 함수 · 타입 (백엔드)
+│   │   ├── types.ts · api-types.ts      # 온톨로지 타입 · API 응답 타입
+│   │   ├── workflow.ts                  # 상태 머신 · 이벤트 처리 · 기한 감시
+│   │   ├── authority.ts · deadline.ts · cash.ts · inventory.ts · performance.ts · penalty.ts · money.ts · dates.ts
+│   │   ├── assessment.ts · provenance.ts # 판단안 근거(결정적) · 숫자 출처 검증
+│   │   ├── sourced.ts · labels.ts · registry.ts · files.ts · errors.ts · mockReplies.ts · dataset.ts · seed.ts
+│   ├── src/server/            # 서버 전용 (백엔드)
+│   │   ├── service.ts · runtime.ts · http.ts · scenarios.ts   # 서비스 · 의존성 · 오류 응답 · 프리셋 재생
+│   │   ├── views/             # 화면용 집계(경고 · 기한 묶음 · 자동 갱신 위험 등) 순수 함수
+│   │   ├── store/             # 저장소 인터페이스 · memory · pg (낙관적 잠금)
+│   │   ├── db/                # Drizzle 스키마 · 접속 · raw_rows 읽기
+│   │   ├── raw/               # 원본 CSV 읽기(읽기 전용)
+│   │   └── ai/                # client(SDK) · agent(도구 6개) · assessor(모의 대체)
+│   ├── drizzle/migrations/    # 0000_init.sql
+│   ├── drizzle.config.ts
+│   ├── scripts/               # db-migrate.ts · db-load-raw.ts (원본 → raw_rows)
+│   ├── docker-compose.yml     # 로컬 개발용 Postgres (5433) — 배포와 무관
+│   └── tests/                 # unit · scenarios · api · db(TEST_DATABASE_URL 있을 때만) · helpers
 └── 01_참가자_배포용/            # 원본 (수정 금지)
 ```
 
 ## 5. 남은 결정 · 후속 작업
 
 - [x] **배포 방식 static → docker 전환** — 2026-11-12 완료 (사용자 승인). 첫 docker 배포 성공 전까지 옛 정적 페이지 유지.
-- [ ] `axhub.yaml` 을 `deploy_method: docker` · `root: app` · `database: engine: postgres` 로 변경 (Next.js 골격과 함께, 그 전엔 push 금지).
+- [ ] `axhub.yaml` 을 `deploy_method: docker` · `root: app`(A 안이면 루트 + `dockerfile`) · `database: engine: postgres` 로 변경 — **아래 원본 CSV 결정 뒤**, Next.js 앱 · `npm run check` 통과와 함께(그 전엔 push 금지). axhub 가 `DATABASE_URL` 을 주입하는지는 **미확인**. 로컬 import 가 `root: app` 을 무시한 이력이 있어([DEPLOY.md](DEPLOY.md) 문제 해결 표) docker 에서도 `root` 반영 여부를 먼저 확인해야 한다. 시작 시 `db:migrate` 실행(지금 스크립트는 `tsx` 라 런타임 이미지에 devDependencies 를 넣거나 JS 로 빌드해야 함). ONTOLOGY BE-14.
 - [x] `ANTHROPIC_API_KEY`: 로컬은 `app/.env.local`(git 제외 — `.git/info/exclude`), axhub 에는 2026-11-12 **secret · stage=runtime** 으로 등록 완료 (아래 DEPLOY.md 5절 방법).
-- [ ] 원본 데이터를 앱에서 읽는 방식: 빌드/시드 시 `01_참가자_배포용/04_원본데이터` → DB 적재 (배포 이미지에 원본 CSV 포함 여부 확인 — 웹 공개 경로로는 노출하지 않음).
-- [x] 온톨로지 · 상태 머신 · 화면 명세 (기획 에이전트 첫 작업) — 2026-11-12 문서화: [ONTOLOGY.md](ONTOLOGY.md) · [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md) · [SCREEN_SPEC.md](SCREEN_SPEC.md). 구현은 미착수.
+- [ ] **원본 CSV 를 배포 환경에서 읽는 방식 — 사용자 결정 대기** (백엔드 비교, 2026-11-14). 어느 안이든 원본 CSV 를 웹 공개 경로(`public/`)로 노출하지 않는다.
+
+  | 안 | 방법 | 장점 | 단점 |
+  |---|---|---|---|
+  | **A 이미지에 CSV 복사** | 루트 컨텍스트 Dockerfile 이 `04_원본데이터` 를 `/data/raw` 로 복사, `RAW_DATA_DIR=/data/raw` | 출처 경로가 로컬과 같다, DB 적재 전에도 동작, 약 2MB | 루트에 Dockerfile 필요, axhub 가져오기가 `root` 설정을 무시한 이력(DEPLOY.md) |
+  | **B DB 적재** | 이미지에 원본 없음, 배포 후 `db:load-raw` 1회 → 런타임은 `raw_rows` 에서 읽음(구현됨, `rawSource: DB`) | 2-5 "DB 적재" 결정과 일치, 이미지가 가볍다 | axhub DB 에 외부(로컬)에서 접속할 수 있는지 **미확인**, 적재 전에는 오류 |
+  | **C Next 파일 추적** | `outputFileTracingRoot` · `outputFileTracingIncludes` 설정으로 빌드 산출물에 포함 | 설정만 | 추적 범위가 커질 수 있고, 상위 폴더까지 빌드 컨텍스트 필요 |
+
+  백엔드 권고: 루트 Dockerfile 이 가능하면 A, 아니면 B. **기획 의견**: 완료 조건 5 의 증거(S-12 원본 파일 목록 · 행 수)는 A · B 모두 같다(`raw_files` 또는 파일 직접). 결정 기준은 axhub 가 루트 Dockerfile 을 받는지(A)와 DB 외부 접속 가능 여부(B) — 둘 다 **미확인**이라 확인 후 사용자가 정한다.
+- [x] 온톨로지 · 상태 머신 · 화면 명세 (기획 에이전트 첫 작업) — 2026-11-12 문서화: [ONTOLOGY.md](ONTOLOGY.md) · [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md) · [SCREEN_SPEC.md](SCREEN_SPEC.md). 구현: 1단계(도메인 · 화면, 커밋 `be79a9d`) · 2단계 백엔드(DB · API · AI, 미커밋) 완료, 프론트 2단계(API 연결) 진행 중.
+- [ ] 실시간 AI 판단안 확인 — API 크레딧 충전(사용자) 뒤 1회 실행(ONTOLOGY BE-15).
+
+### 5-1. 로컬 개발 DB 와 환경변수 (2026-11-14)
+
+로컬 Postgres 는 둘 중 하나를 쓴다(배포와 무관). 값(접속 문자열 · 키)은 이 문서에 쓰지 않는다 — `app/.env.local`(git 제외)에 둔다.
+- **Homebrew Postgres 17** — 백엔드가 2단계 확인에 쓴 방식(로컬 DB `aoura_dev`).
+- **`app/docker-compose.yml`** — `docker compose up -d` 로 Postgres 17 을 **호스트 포트 5433** 에 띄운다(로컬 전용 계정, 운영 비밀값 아님).
+- 준비: `npm run db:setup` = `db:migrate`(Drizzle 마이그레이션) + `db:load-raw`(원본 17 파일 → `raw_files` · `raw_rows`). 스키마 변경 시 `db:generate`.
+
+| 환경변수 | 용도 | 없으면 | 어디에 |
+|---|---|---|---|
+| `DATABASE_URL` | 운영 상태 · 원본 적재 DB 접속 | 메모리 저장소(재시작 시 초기화, `persistence: MEMORY`) | 로컬 `.env.local` · axhub(주입 여부 미확인) |
+| `ANTHROPIC_API_KEY` | 실시간 판단안 | 모의 모드(`aiMode: MOCK`) | 로컬 `.env.local` · axhub secret(runtime, 등록됨) |
+| `AOURA_AI_MODE` | `mock` 이면 키가 있어도 모의 강제(시연 · 테스트) | 키가 있으면 실시간 | 선택 |
+| `RAW_DATA_DIR` | 원본 CSV 폴더 절대 경로 | `app/` 기준 `../01_참가자_배포용/04_원본데이터`, 그것도 없으면 DB `raw_rows` | A 안 배포 시 `/data/raw` |
+| `TEST_DATABASE_URL` | DB 통합 테스트(`tests/db/`) 전용 DB | DB 테스트 건너뜀 | 로컬만 (운영 DB 를 넣지 않는다) |

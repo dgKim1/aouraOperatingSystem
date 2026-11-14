@@ -74,8 +74,9 @@ describe('③ 정보 부족 · 거절', () => {
   it('AC-3-05 수령 미확인으로 7/18 00:00 → NOTICE_UNCONFIRMED (AUTO_RENEWED 아님) + 에스컬레이션', () => {
     const s = wf.advanceClock(branchA(), at('2026-07-18', '00:00')).state;
     expect(s.contract.status).toBe('NOTICE_UNCONFIRMED');
-    const esc = s.tasks.filter((t) => t.type === 'INCIDENT_AUTO_RENEWAL');
+    const esc = s.tasks.filter((t) => t.type === 'ESCALATE_NOTICE_UNCONFIRMED');
     expect(esc.map((t) => t.ownerRole).sort()).toEqual(['CONTRACT_OFFICER', 'GROUP_CEO_BOARD']);
+    expect(tasksOf(s, 'INCIDENT_AUTO_RENEWAL')).toHaveLength(0); // BE-01
     expect(tasksOf(s, 'RENOTIFY')).toHaveLength(1); // 기한 당일 09:00 를 지나쳐 이동해도 1회 생성
   });
 

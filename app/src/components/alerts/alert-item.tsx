@@ -4,7 +4,7 @@
  */
 import Link from 'next/link';
 import { AlertOctagon, AlertTriangle, CalendarClock, FileWarning, Link2, Mailbox, PackageX, ShieldAlert, TrendingDown } from 'lucide-react';
-import type { AlertKind, AlertView, Severity } from '@/app/_data/types';
+import type { AlertKind, AlertView, Severity } from '@/domain/api-types';
 import { ROLE_KO } from '@/domain/types';
 import { cn } from '@/lib/utils';
 import { SourceBadgeStatic } from '../badges/source-badge';

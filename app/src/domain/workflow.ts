@@ -24,10 +24,12 @@ import type {
   ApprovalRequest,
   ApprovalStatus,
   ApproverRole,
+  Assessment,
   AuditLogEntry,
   CampaignPerformance,
   ContractDecision,
   ContractStatus,
+  CounterpartyReplyInput,
   DeadlineLevel,
   DomainEvent,
   EventType,
@@ -50,6 +52,7 @@ import type {
   SubjectType,
   Task,
 } from './types';
+import { ROLE_KO } from './types';
 
 // ───────────────────────── 상태 ─────────────────────────
 
@@ -64,6 +67,8 @@ export interface WorldState {
   notices: Notice[];
   receipts: NoticeReceipt[];
   replenishments: ReplenishmentRequest[];
+  /** 판단안 (AI 또는 모의). 판단안은 상태를 바꾸지 않는다 — 기록과 승인요청 근거 연결만 */
+  assessments: Assessment[];
   audit: AuditLogEntry[];
   events: DomainEvent[];
   /** 현재 유효한 자금 재전망 (FULL). 권한 판정(R-AUTH-03)의 입력 */
@@ -406,6 +411,7 @@ export function initialState(ds: MasilDataset, opts: { simNow?: IsoDateTime } = 
     notices: [],
     receipts: [],
     replenishments: [],
+    assessments: [],
     audit: [],
     events: [],
     forecast: simulateCash(ds, { id: 'CF-v1' }),
@@ -517,7 +523,12 @@ function mergeReasons(lines: ExpansionLine[]): RoutingReason[] {
 }
 
 /** A-11 묶음 = requiredRole × contractDeadline × subjectType. 권한 서열 높은 묶음부터 생성 */
-function createLineRequests(tx: Tx, lines: ExpansionLine[], proposed: Record<string, string>, opts: { assessmentId?: string | null; supersedesId?: string | null; version?: number }): void {
+function createLineRequests(
+  tx: Tx,
+  lines: ExpansionLine[],
+  proposed: Record<string, string>,
+  opts: { assessmentId?: string | null; supersedesId?: string | null; version?: number; keepPending?: boolean },
+): void {
   const groups = new Map<string, ExpansionLine[]>();
   for (const l of lines) {
     if (!l.routing) throw new DomainError('INVALID_TRANSITION', `${l.id}: 확인(라우팅) 전에는 상신할 수 없음`);
@@ -545,8 +556,14 @@ function createLineRequests(tx: Tx, lines: ExpansionLine[], proposed: Record<str
       supersedesId: opts.supersedesId ?? null,
     });
     for (const l of g) {
+      const prevReq = l.approvalRequestId ?? null;
       l.approvalRequestId = req.id;
-      tx.setLine(l, 'PENDING_APPROVAL', 'SYSTEM', 'SYSTEM', [...new Set(l.routing!.reasons.map((r) => r.ruleId))], `${req.id} 로 ${role} 에게 상신`);
+      if (opts.keepPending) {
+        // R-AUTH-06 RESUBMIT_PENDING: 건은 PENDING_APPROVAL 그대로 — 같은 상태 이력 1행만 (BE-02, 이력 연속성)
+        tx.audit({ entityType: 'EXPANSION_LINE', entityId: l.id, from: l.status, to: l.status, actorRole: 'SYSTEM', actorKind: 'SYSTEM', ruleIds: ['R-AUTH-06'], reason: `${prevReq ?? '-'} 대체 → ${req.id} 재상신 (${role})` });
+      } else {
+        tx.setLine(l, 'PENDING_APPROVAL', 'SYSTEM', 'SYSTEM', [...new Set(l.routing!.reasons.map((r) => r.ruleId))], `${req.id} 로 ${role} 에게 상신`);
+      }
     }
   }
 }
@@ -562,8 +579,18 @@ export function requestLineApproval(s: WorldState, input: { lineIds: string[]; p
 
 // ───────────────────────── 회신 (MOCK) ─────────────────────────
 
+/** 요청을 번호 대신 의미(대상 종류 · 권한자 · 포함 대상)로 찾는다 — 모의 회신 · 프리셋 재생 (BE-05) */
+export interface RequestTarget {
+  subjectType: SubjectType;
+  requiredRole?: ApproverRole;
+  /** 이 대상 ID 들을 모두 포함하는 요청 */
+  includes?: string[];
+}
+
 export interface ReplyInput {
-  requestId: string;
+  /** 요청 번호. 없으면 target 으로 대기(PENDING) 요청을 찾는다 */
+  requestId?: string;
+  target?: RequestTarget;
   respondentRole: ApproverRole;
   outcome: ReplyOutcome;
   itemDecisions?: ApprovalReply['itemDecisions'];
@@ -583,7 +610,19 @@ const DECISION_TO_STATUS: Record<ItemDecision, LineStatus> = {
  * 권한자 회신 처리 (R-AUTH-05). requiredRole 이 아니면 422, 이미 처리된 요청이면 409.
  * 검증은 상태를 바꾸기 전에 모두 끝낸다 → 실패 시 아무것도 바뀌지 않는다.
  */
-export function replyToApproval(s: WorldState, ds: MasilDataset, input: ReplyInput): EventResult {
+/** target 에 맞는 대기 요청 (여럿이면 가장 최근) */
+export function findPendingRequest(s: WorldState, t: RequestTarget): ApprovalRequest {
+  const hit = s.approvals.filter(
+    (a) => a.status === 'PENDING' && a.subjectType === t.subjectType && (!t.requiredRole || a.requiredRole === t.requiredRole) && (t.includes ?? []).every((x) => a.subjectIds.includes(x)),
+  );
+  const r = hit.at(-1);
+  if (!r) throw new DomainError('NOT_FOUND', `대기 중 승인요청 없음: ${t.subjectType}${t.requiredRole ? ` · ${t.requiredRole}` : ''}${t.includes?.length ? ` · ${t.includes.join(',')}` : ''}`);
+  return r;
+}
+
+export function replyToApproval(s: WorldState, ds: MasilDataset, input0: ReplyInput): EventResult {
+  if (!input0.requestId && !input0.target) throw new DomainError('VALIDATION', '회신 대상 요청(requestId 또는 target)이 없음');
+  const input = { ...input0, requestId: input0.requestId ?? findPendingRequest(s, input0.target!).id };
   const req0 = findApproval(s, input.requestId);
   assertCanReply(input.respondentRole, req0);
   if (req0.status !== 'PENDING') throw new DomainError('INVALID_TRANSITION', `${req0.id} 는 이미 ${req0.status} — 회신할 수 없음`);
@@ -658,7 +697,7 @@ function replyLines(tx: Tx, req: ApprovalRequest, reply: ApprovalReply): void {
   for (const l of lines) {
     if (l.status !== 'PENDING_APPROVAL' || l.approvalRequestId !== req.id) throw new DomainError('INVALID_TRANSITION', `${l.id} 는 ${req.id} 의 대기 건이 아님 (${l.status})`);
     if (l.routing && roleRank(l.routing.requiredRole) > roleRank(actor)) {
-      throw new DomainError('FORBIDDEN_ROLE', `권한 없음: ${l.id} 의 현재 권한자는 ${l.routing.requiredRole}`);
+      throw new DomainError('FORBIDDEN_ROLE', `권한 없음: ${l.id} 은(는) ${ROLE_KO[l.routing.requiredRole]}만 결정할 수 있습니다 (권한자 변경 — R-AUTH-06)`);
     }
   }
   const decisions = new Map<string, { decision: ItemDecision; condition?: string }>();
@@ -672,6 +711,10 @@ function replyLines(tx: Tx, req: ApprovalRequest, reply: ApprovalReply): void {
     if (d === 'CONDITIONAL' && !explicit?.condition) throw new DomainError('INFO_MISSING', `${l.id}: 조건부 승인에는 조건 문구가 필요`);
     decisions.set(l.id, { decision: d, ...(explicit?.condition ? { condition: explicit.condition } : {}) });
   }
+  // BE-08: 회신 유형과 건별 결정이 서로 맞아야 한다 (상태를 바꾸기 전에 검증 → 실패 시 상태 불변)
+  const hasConditional = [...decisions.values()].some((d) => d.decision === 'CONDITIONAL');
+  if (reply.outcome === 'APPROVED' && hasConditional) throw new DomainError('VALIDATION', '조건부(CONDITIONAL) 건이 있으면 회신 유형은 APPROVED_WITH_CONDITIONS 여야 함');
+  if (reply.outcome === 'APPROVED_WITH_CONDITIONS' && !hasConditional) throw new DomainError('VALIDATION', 'APPROVED_WITH_CONDITIONS 회신에는 조건부(CONDITIONAL) 건이 하나 이상 있어야 함');
   let decided = false;
   for (const l of lines) {
     const { decision, condition } = decisions.get(l.id)!;
@@ -699,7 +742,10 @@ function replyReplenishment(tx: Tx, req: ApprovalRequest, reply: ApprovalReply):
     return r;
   });
   const to: ReplenishmentStatus = reply.outcome === 'REJECTED' ? 'REJECTED' : reply.outcome === 'INFO_REQUESTED' ? 'INFO_REQUESTED' : 'APPROVED';
-  for (const r of reqs) tx.setReplenishment(r, to, actor, 'MOCK', ['R-AUTH-04', 'R-AUTH-05'], `${actor} 회신: ${reply.reason}`);
+  for (const r of reqs) {
+    tx.setReplenishment(r, to, actor, 'MOCK', ['R-AUTH-04', 'R-AUTH-05'], `${actor} 회신: ${reply.reason}`);
+    if (to === 'REJECTED') r.closedBy = 'APPROVER';
+  }
   const lineIds = new Set(reqs.map((r) => r.triggerLineId).filter((x): x is string => !!x));
   for (const id of lineIds) {
     const l = findLine(tx.s, id);
@@ -762,6 +808,87 @@ export function completeTask(s: WorldState, ds: MasilDataset, taskId: string, in
   return tx.result();
 }
 
+/** 작업 시작 (OPEN | OVERDUE → IN_PROGRESS). 다른 엔티티 전이는 없다 */
+export function startTask(s: WorldState, taskId: string, actorRole: ActorRole): WorkflowResult {
+  const tx = new Tx(s);
+  const t = tx.s.tasks.find((x) => x.id === taskId);
+  if (!t) throw new DomainError('NOT_FOUND', `작업 없음: ${taskId}`);
+  if (t.status !== 'OPEN' && t.status !== 'OVERDUE') throw new DomainError('INVALID_TRANSITION', `작업 ${t.id}: ${t.status} → IN_PROGRESS 전이는 허용되지 않음`);
+  tx.setTask(t, 'IN_PROGRESS', actorRole, 'HUMAN', '작업 시작');
+  return tx.result();
+}
+
+/** 작업 취소 — 사유 필수. 연결 엔티티 상태는 바꾸지 않는다 (기한 감시는 그대로 돈다) */
+export function cancelTask(s: WorldState, taskId: string, input: { actorRole: ActorRole; reason: string }): WorkflowResult {
+  if (!input.reason?.trim()) throw new DomainError('VALIDATION', '작업 취소에는 사유가 필요');
+  const tx = new Tx(s);
+  const t = tx.s.tasks.find((x) => x.id === taskId);
+  if (!t) throw new DomainError('NOT_FOUND', `작업 없음: ${taskId}`);
+  if (!OPEN_TASK.includes(t.status)) throw new DomainError('INVALID_TRANSITION', `작업 ${t.id} 는 이미 ${t.status}`);
+  tx.setTask(t, 'CANCELLED', input.actorRole, 'HUMAN', `작업 취소: ${input.reason}`, input.reason);
+  return tx.result();
+}
+
+// ───────────────────────── 판단안 기록 · 승인요청 연결 ─────────────────────────
+
+export type AssessmentDraft = Omit<Assessment, 'id' | 'version'>;
+
+/**
+ * 판단안 기록. 판단안은 어떤 엔티티의 상태도 바꾸지 않는다 (AI 는 전이를 일으키지 않음 — ONTOLOGY 3-1).
+ * - id = ASM-nnn, version = 같은 대상(subjectType + subjectIds)의 이전 판단안 수 + 1
+ * - 이력: ASSESSMENT null → CREATED (actorKind = AI 또는 MOCK)
+ * - 판단안 ID 가 비어 있는 대기 중 승인요청(같은 종류, 대상이 판단안 대상에 모두 포함)에 판단안 ID 를 채운다 (예: ② 재판정으로 자동 생성된 APR-004)
+ */
+export function recordAssessment(s: WorldState, draft: AssessmentDraft): WorkflowResult & { assessment: Assessment } {
+  const tx = new Tx(s);
+  const key = (a: { subjectType: string; subjectIds: string[] }) => `${a.subjectType}|${[...a.subjectIds].sort().join(',')}`;
+  const version = tx.s.assessments.filter((a) => key(a) === key(draft)).length + 1;
+  const assessment: Assessment = { ...draft, id: tx.nextId('ASM'), version };
+  tx.s.assessments.push(assessment);
+  tx.audit({
+    entityType: 'ASSESSMENT',
+    entityId: assessment.id,
+    from: null,
+    to: 'CREATED',
+    actorRole: 'AI_AGENT',
+    actorKind: assessment.aiMode === 'LIVE' ? 'AI' : 'MOCK',
+    ruleIds: [...new Set(assessment.ruleResults.map((r) => r.ruleId))],
+    reason: `판단안 v${version} (${assessment.subjectType}: ${assessment.subjectIds.join(', ')}) — 권고 ${assessment.recommendation.alternativeId}${assessment.fallbackReason ? ` · 모의 대체: ${assessment.fallbackReason}` : ''}`,
+    snapshot: { aiMode: assessment.aiMode, model: assessment.model, subjectIds: assessment.subjectIds },
+  });
+  const ids = new Set(assessment.subjectIds);
+  for (const a of tx.s.approvals) {
+    if (a.status !== 'PENDING' || a.assessmentId !== null || a.subjectType !== assessment.subjectType) continue;
+    if (!a.subjectIds.every((x) => ids.has(x))) continue;
+    a.assessmentId = assessment.id;
+    tx.audit({ entityType: 'APPROVAL_REQUEST', entityId: a.id, from: a.status, to: a.status, actorRole: 'SYSTEM', actorKind: 'SYSTEM', ruleIds: [], reason: `근거 판단안 ${assessment.id} 연결` });
+  }
+  return { ...tx.result(), assessment };
+}
+
+/**
+ * 판단안 → 승인요청 (S-03/S-04 [승인 요청 만들기]). 권한자는 규칙 엔진이 정한다 (AI 아님).
+ * - 계약: 판단안 권고 대안의 결정 (권고가 없으면 VALIDATION)
+ * - 기안 건: 판단안의 규칙 권고(proposedDecisions)로 권한자별 묶음 (A-11)
+ */
+export function requestApprovalFromAssessment(s: WorldState, assessmentId: string): WorkflowResult {
+  const a = s.assessments.find((x) => x.id === assessmentId);
+  if (!a) throw new DomainError('NOT_FOUND', `판단안 없음: ${assessmentId}`);
+  if (a.subjectType === 'CONTRACT') {
+    const alt = a.alternatives.find((x) => x.id === a.recommendation.alternativeId);
+    const decision = alt?.decision as ContractDecision | undefined;
+    if (!decision || !['RENEW_SAME', 'RENEGOTIATE', 'TERMINATE'].includes(decision)) {
+      throw new DomainError('VALIDATION', `${a.id}: 상신할 계약 결정이 없음 (권고 ${a.recommendation.alternativeId})`);
+    }
+    return requestContractApproval(s, { proposedDecision: decision, assessmentId: a.id });
+  }
+  if (a.subjectType === 'EXPANSION_LINES') {
+    const proposed = Object.fromEntries((a.proposedDecisions ?? []).map((p) => [p.itemId, p.decision]));
+    return requestLineApproval(s, { lineIds: a.subjectIds, proposed, assessmentId: a.id });
+  }
+  throw new DomainError('INVALID_TRANSITION', '보충요청 상신은 SCM 회신(추가 발주 필요)으로 만들어진다');
+}
+
 /** S1-6 / S3-3 상대방 수령확인 (E1). NOTICE_SENT → NOTICE_ACKNOWLEDGED → NEGOTIATING | TERMINATING */
 export function recordNoticeReceipt(s: WorldState, input: { evidence: string }): EventResult {
   const tx = new Tx(s);
@@ -779,20 +906,50 @@ export function recordNoticeReceipt(s: WorldState, input: { evidence: string }):
   return tx.eventResult();
 }
 
-export interface CounterpartyReplyInput {
-  from: 'AGENCY' | 'COREVIA';
-  outcome: 'INSUFFICIENT' | 'PROVIDED';
-  note: string;
-  label: 'MOCK';
-}
+export type { CounterpartyReplyInput };
 
-/** S3-2 외부 정보 회신 (에이전시 등). 열린 INFO_REQUEST 작업을 결과와 함께 닫는다 */
+/** S3-2 에이전시 정보 회신 — 열린 계약 INFO_REQUEST 작업을 결과와 함께 닫는다 (정보 제공 · 정보 부족 · 거절) */
 export function recordCounterpartyReply(s: WorldState, input: CounterpartyReplyInput): EventResult {
+  if (input.outcome === 'RECEIPT_CONFIRMED') return recordNoticeReceipt(s, { evidence: input.note });
   const tx = new Tx(s);
   tx.emit('COUNTERPARTY_REPLY', input, 'MOCK', input.from);
   const t = tx.s.tasks.find((x) => x.type === 'INFO_REQUEST' && x.subjectType === 'CONTRACT' && OPEN_TASK.includes(x.status));
   if (!t) throw new DomainError('NOT_FOUND', '열린 정보 요청 작업 없음');
-  tx.setTask(t, 'DONE', input.from, 'MOCK', `${input.from} 회신`, `${input.outcome}: ${input.note}`);
+  tx.setTask(t, 'DONE', input.from, 'MOCK', `${input.from} 회신 (${input.outcome})`, `${input.outcome}: ${input.note}`);
+  if (input.outcome === 'INFO_PROVIDED') {
+    // 정보 제공 — 성과 피 조건을 모의 회신 문구로 기록 (숫자 산식이 아니므로 권한 판정 금액은 계속 하한)
+    tx.s.contract.performanceFeeTerms = input.note;
+    tx.audit({ entityType: 'CONTRACT', entityId: tx.s.contract.id, from: tx.s.contract.status, to: tx.s.contract.status, actorRole: input.from, actorKind: 'MOCK', ruleIds: ['R-AUTH-02'], reason: `성과 피 조건 회신 (모의): ${input.note}` });
+  }
+  return tx.eventResult();
+}
+
+/**
+ * S-02 외부 회신 단일 입구 — 상대(에이전시 · SCM · Corevia) × 결과(수령확인 · 정보 제공 · 정보 부족 · 거절).
+ * 상대별로 맞는 업무 함수로 보낸다. 맞지 않는 조합은 VALIDATION(422).
+ */
+export function counterpartyReply(s: WorldState, ds: MasilDataset, input: CounterpartyReplyInput): EventResult {
+  if (input.from === 'AGENCY') {
+    if (input.outcome === 'RECEIPT_CONFIRMED') return recordNoticeReceipt(s, { evidence: input.note });
+    return recordCounterpartyReply(s, input);
+  }
+  if (input.outcome === 'RECEIPT_CONFIRMED') throw new DomainError('VALIDATION', `${input.from} 회신에는 수령확인이 없음 (통보 수령확인은 에이전시)`);
+  if (input.from === 'SCM') return scmReview(s, ds, { ...input, from: 'SCM' });
+  return coreviaReply(s, input);
+}
+
+/** Corevia(공급사) 회신 — SCM 이 연 정보 요청(입고일 등)을 닫고 입고 예정일을 연결 건에 기록 */
+function coreviaReply(s: WorldState, input: CounterpartyReplyInput): EventResult {
+  const tx = new Tx(s);
+  tx.emit('COUNTERPARTY_REPLY', input, 'MOCK', 'COREVIA');
+  const t = tx.s.tasks.find((x) => x.type === 'INFO_REQUEST' && x.ownerRole === 'SCM' && OPEN_TASK.includes(x.status));
+  if (!t) throw new DomainError('NOT_FOUND', '열린 SCM 정보 요청 작업 없음');
+  tx.setTask(t, 'DONE', 'COREVIA', 'MOCK', `Corevia 회신 (${input.outcome})`, `${input.outcome}: ${input.note}`);
+  if (input.outcome === 'INFO_PROVIDED' && input.inboundExpectedDate && t.subjectType === 'EXPANSION_LINE') {
+    const l = findLine(tx.s, t.subjectId);
+    l.inboundExpectedDate = input.inboundExpectedDate;
+    tx.audit({ entityType: 'EXPANSION_LINE', entityId: l.id, from: l.status, to: l.status, actorRole: 'COREVIA', actorKind: 'MOCK', ruleIds: ['R-INV-03'], reason: `입고 예정 ${input.inboundExpectedDate} (Corevia 모의 회신)` });
+  }
   return tx.eventResult();
 }
 
@@ -884,20 +1041,16 @@ function applyReroute(tx: Tx, ds: MasilDataset, only?: Set<string>): void {
     }
   }
   for (const r of reapprove) {
-    createLineRequests(tx, [r.line], { [r.line.id]: r.decision }, { supersedesId: r.prevRequestId });
+    const prevVersion = r.prevRequestId ? (s.approvals.find((a) => a.id === r.prevRequestId)?.version ?? 0) : 0;
+    createLineRequests(tx, [r.line], { [r.line.id]: r.decision }, { supersedesId: r.prevRequestId, version: prevVersion + 1 });
   }
   for (const reqId of resubmitRequests) {
     const old = findApproval(s, reqId);
     if (old.status !== 'PENDING') continue;
     tx.setApproval(old, 'SUPERSEDED', 'SYSTEM', 'SYSTEM', ['R-AUTH-06'], '권한 재판정으로 대체');
-    const lines = old.subjectIds.map((id) => findLine(s, id)).filter((l) => l.status === 'PENDING_APPROVAL');
-    for (const l of lines) {
-      // 같은 상태로 재상신 — 이력에 남긴다
-      tx.audit({ entityType: 'EXPANSION_LINE', entityId: l.id, from: l.status, to: l.status, actorRole: 'SYSTEM', actorKind: 'SYSTEM', ruleIds: ['R-AUTH-06'], reason: `${old.id} 대체 → 재상신` });
-    }
+    const lines = old.subjectIds.map((id) => findLine(s, id)).filter((l) => l.status === 'PENDING_APPROVAL' && l.approvalRequestId === old.id);
     const proposed = Object.fromEntries(old.proposed.map((p) => [p.itemId, p.decision]));
-    for (const l of lines) l.status = 'VALIDATED';
-    createLineRequests(tx, lines, proposed, { supersedesId: old.id, version: old.version + 1 });
+    createLineRequests(tx, lines, proposed, { supersedesId: old.id, version: old.version + 1, assessmentId: old.assessmentId, keepPending: true });
   }
 }
 
@@ -923,7 +1076,36 @@ export function arCollectionDelayed(s: WorldState, ds: MasilDataset, input: { ar
     snapshot: { breachWindows: tx.s.forecast.breachWindows, minClosing: tx.s.forecast.minClosing },
   });
   applyReroute(tx, ds);
+  applyReplenishmentReroute(tx);
   return tx.eventResult();
+}
+
+/**
+ * BE-09 (선택) 보충요청 권한 재판정 — 재전망 뒤 지급일이 새 하회 구간에 들어가면 R-AUTH-04 → R-AUTH-03 상향.
+ * 대기(PENDING) 승인요청은 SUPERSEDED + 새 권한자에게 재상신(version + 1). 하향이면 기존 상위 권한자 요청을 유지한다(R-AUTH-06).
+ * 초안(DRAFT)은 권한자 표시만 갱신한다.
+ */
+function applyReplenishmentReroute(tx: Tx): void {
+  const s = tx.s;
+  for (const r of s.replenishments) {
+    if (r.status !== 'DRAFT') continue;
+    const to = routeReplenishment({ expectedPaymentDate: r.expectedPaymentDate }, s.forecast.breachWindows, s.forecast.id).requiredRole;
+    if (to === r.requiredRole) continue;
+    tx.audit({ entityType: 'REPLENISHMENT', entityId: r.id, from: r.status, to: r.status, actorRole: 'SYSTEM', actorKind: 'SYSTEM', ruleIds: ['R-AUTH-06', 'R-AUTH-04'], reason: `권한 재판정 ${r.requiredRole} → ${to} [재전망 ${s.forecast.id}]` });
+    r.requiredRole = to;
+  }
+  for (const old of s.approvals.filter((a) => a.subjectType === 'REPLENISHMENT' && a.status === 'PENDING')) {
+    const reqs = old.subjectIds.map((id) => s.replenishments.find((x) => x.id === id)).filter((x): x is ReplenishmentRequest => !!x);
+    if (reqs.length === 0) continue;
+    const routing = routeReplenishment({ expectedPaymentDate: reqs[0]!.expectedPaymentDate }, s.forecast.breachWindows, s.forecast.id);
+    if (roleRank(routing.requiredRole) <= roleRank(old.requiredRole)) continue;
+    tx.setApproval(old, 'SUPERSEDED', 'SYSTEM', 'SYSTEM', ['R-AUTH-06'], `권한 재판정 ${old.requiredRole} → ${routing.requiredRole} [재전망 ${s.forecast.id}]`);
+    const neu = tx.addApproval({ ...old, requiredRole: routing.requiredRole, routingReasons: routing.reasons, version: old.version + 1, supersedesId: old.id });
+    for (const r of reqs) {
+      r.requiredRole = routing.requiredRole;
+      tx.audit({ entityType: 'REPLENISHMENT', entityId: r.id, from: r.status, to: r.status, actorRole: 'SYSTEM', actorKind: 'SYSTEM', ruleIds: ['R-AUTH-06', 'R-AUTH-03'], reason: `${old.id} 대체 → ${neu.id} 재상신 (${routing.requiredRole})` });
+    }
+  }
 }
 
 const fmtWindows = (w: { start: string; end: string }[]) => (w.length ? w.map((x) => `${x.start}~${x.end}`).join(', ') : '없음');
@@ -968,12 +1150,17 @@ export function changeLineTerms(s: WorldState, ds: MasilDataset, input: { lineId
 const G08 = '기발주 SPO 가 in_transit_qty 에 포함됐는가? in_transit 입고일은? (G-08)';
 
 /** 보충요청 초안 — 주력 SKU 중 안전재고 min 미달 SKU 만. 지급일 = 오늘 + 25일 (A-19) */
-export function draftReplenishment(s: WorldState, ds: MasilDataset, input: { triggerLineId: string }): WorkflowResult {
+export function draftReplenishment(s: WorldState, ds: MasilDataset, input: { triggerLineId: string; skuIds?: string[] }): WorkflowResult {
   const tx = new Tx(s);
   const l = findLine(tx.s, input.triggerLineId);
   const today = kstDate(tx.s.simNow);
   const pay = expectedPaymentDate(today);
-  const suggestions = replenishmentSuggestionsForLine(ds, l.campaignId);
+  const all = replenishmentSuggestionsForLine(ds, l.campaignId);
+  if (all.length === 0) throw new DomainError('VALIDATION', `${l.id}: 안전재고 min 미달 주력 SKU 가 없어 보충 제안 대상이 아님 (R-INV-04)`);
+  const unknownSku = (input.skuIds ?? []).filter((k) => !all.some((x) => x.skuId === k));
+  if (unknownSku.length) throw new DomainError('VALIDATION', `보충 제안 대상이 아닌 SKU: ${unknownSku.join(', ')} (min 미달 주력 SKU 만)`);
+  if (tx.s.replenishments.some((r) => r.triggerLineId === l.id && r.status === 'DRAFT')) throw new DomainError('INVALID_TRANSITION', `${l.id}: 검토 중인 보충요청 초안이 이미 있음`);
+  const suggestions = input.skuIds?.length ? all.filter((x) => input.skuIds!.includes(x.skuId)) : all;
   for (const sg of suggestions) {
     const routing = routeReplenishment({ expectedPaymentDate: pay }, tx.s.forecast.breachWindows, tx.s.forecast.id);
     const r: ReplenishmentRequest = {
@@ -997,36 +1184,60 @@ export function draftReplenishment(s: WorldState, ds: MasilDataset, input: { tri
     tx.audit({ entityType: 'REPLENISHMENT', entityId: r.id, from: null, to: 'DRAFT', actorRole: 'SYSTEM', actorKind: 'SYSTEM', ruleIds: ['R-INV-04', routing.reasons[0]!.ruleId], reason: `보충 제안 ${sg.skuId} ${sg.finalQty}EA → 권한자 ${routing.requiredRole}` });
   }
   l.supplyOutlook = 'UNKNOWN';
-  const due = internalDueAt('LINE_APPROVAL', l.contractDeadline);
+  // A-27: 정보 요청 · 보충 검토 기한 = min(생성일 + 3일, 확정기한 − 2일)
+  const due = deadlineAt(minDate(addDays(today, 3), addDays(l.contractDeadline, -2)));
   tx.addTask({ type: 'REPLENISHMENT_REVIEW', subjectType: 'EXPANSION_LINE', subjectId: l.id, ownerRole: 'SCM', dueAt: due, instruction: `보충 제안 검토: ${suggestions.map((x) => `${x.skuId} ${x.finalQty}`).join(', ')}` }, ['R-INV-04']);
   tx.addTask({ type: 'INFO_REQUEST', subjectType: 'EXPANSION_LINE', subjectId: l.id, ownerRole: 'SCM', dueAt: due, instruction: G08 }, ['R-INV-02']);
   return tx.result();
 }
 
-export interface ScmReviewInput {
-  from: 'SCM';
-  outcome: 'NOT_NEEDED' | 'NEEDED';
-  note: string;
-  inboundExpectedDate?: IsoDate;
-  label: 'MOCK';
-}
+/** ④ SCM 회신 — S-02 외부 회신 양식(CounterpartyReplyInput)에서 from = 'SCM' */
+export type ScmReviewInput = CounterpartyReplyInput & { from: 'SCM' };
 
-/** ④ SCM 회신 (MOCK): 불필요 → 보충 REJECTED · 공급 전망 확정 / 필요 → SUBMITTED + 승인요청(SCM 또는 covenant 구간이면 GCB) */
+/**
+ * ④ SCM 회신 (MOCK)
+ *  - 정보 제공 + 추가 발주 불필요(replenishmentNeeded=false) → 보충 REJECTED · 공급 전망 INBOUND_CONFIRMED (+입고 예정일)
+ *  - 정보 제공 + 추가 발주 필요(true) → SUBMITTED + 승인요청(SCM 또는 covenant 구간이면 GCB)
+ *  - 정보 부족 → 초안 유지, 정보 요청 작업만 결과와 함께 닫음 (G-08 미해결)
+ *  - 거절(보충 불가) → 보충 REJECTED · 공급 전망 NO_SUPPLY → 연결 건 권고가 부결로 바뀜
+ */
 export function scmReview(s: WorldState, ds: MasilDataset, input: ScmReviewInput): EventResult {
+  if (input.outcome === 'RECEIPT_CONFIRMED') throw new DomainError('VALIDATION', 'SCM 회신에는 수령확인이 없음');
+  if (input.outcome === 'INFO_PROVIDED' && input.replenishmentNeeded === undefined) {
+    throw new DomainError('VALIDATION', 'SCM 정보 제공 회신에는 추가 발주 필요 여부(replenishmentNeeded)가 필요');
+  }
   const tx = new Tx(s);
   tx.emit('COUNTERPARTY_REPLY', input, 'MOCK', 'SCM');
   const drafts = tx.s.replenishments.filter((r) => r.status === 'DRAFT');
   if (drafts.length === 0) throw new DomainError('NOT_FOUND', '검토할 보충요청 초안 없음');
+  const closeTypes: Task['type'][] = input.outcome === 'INSUFFICIENT' ? ['INFO_REQUEST'] : ['REPLENISHMENT_REVIEW', 'INFO_REQUEST'];
   for (const t of tx.s.tasks) {
-    if (t.ownerRole === 'SCM' && (t.type === 'REPLENISHMENT_REVIEW' || t.type === 'INFO_REQUEST') && OPEN_TASK.includes(t.status)) tx.setTask(t, 'DONE', 'SCM', 'MOCK', 'SCM 회신', `${input.outcome}: ${input.note}`);
+    if (t.ownerRole === 'SCM' && closeTypes.includes(t.type) && OPEN_TASK.includes(t.status)) tx.setTask(t, 'DONE', 'SCM', 'MOCK', `SCM 회신 (${input.outcome})`, `${input.outcome}: ${input.note}`);
   }
   const lineIds = [...new Set(drafts.map((r) => r.triggerLineId).filter((x): x is string => !!x))];
-  if (input.outcome === 'NOT_NEEDED') {
-    for (const r of drafts) tx.setReplenishment(r, 'REJECTED', 'SCM', 'MOCK', ['R-INV-04'], `불필요: ${input.note}`);
+  if (input.outcome === 'INSUFFICIENT') return tx.eventResult();
+  if (input.outcome === 'REJECTED') {
+    for (const r of drafts) {
+      tx.setReplenishment(r, 'REJECTED', 'SCM', 'MOCK', ['R-INV-04'], `보충 불가: ${input.note}`);
+      r.closedBy = 'SCM_NO_SUPPLY';
+    }
+    for (const id of lineIds) {
+      const l = findLine(tx.s, id);
+      l.supplyOutlook = 'NO_SUPPLY';
+      tx.audit({ entityType: 'EXPANSION_LINE', entityId: l.id, from: l.status, to: l.status, actorRole: 'SCM', actorKind: 'MOCK', ruleIds: ['R-INV-03'], reason: 'SCM 보충 불가 → 공급 전망 NO_SUPPLY (다음 권고에 반영)' });
+    }
+    return tx.eventResult();
+  }
+  if (input.replenishmentNeeded === false) {
+    for (const r of drafts) {
+      tx.setReplenishment(r, 'REJECTED', 'SCM', 'MOCK', ['R-INV-04'], `불필요: ${input.note}`);
+      r.closedBy = 'SCM_NOT_NEEDED';
+    }
     for (const id of lineIds) {
       const l = findLine(tx.s, id);
       l.supplyOutlook = 'INBOUND_CONFIRMED';
       l.inboundExpectedDate = input.inboundExpectedDate ?? null;
+      tx.audit({ entityType: 'EXPANSION_LINE', entityId: l.id, from: l.status, to: l.status, actorRole: 'SCM', actorKind: 'MOCK', ruleIds: ['R-INV-03'], reason: `공급 전망 INBOUND_CONFIRMED${l.inboundExpectedDate ? ` · 입고 ${l.inboundExpectedDate}` : ''} (다음 권고에 반영)` });
     }
     return tx.eventResult();
   }
@@ -1104,7 +1315,7 @@ export function advanceClock(s: WorldState, to: IsoDateTime): EventResult {
     } else if (c.status === 'NOTICE_SENT') {
       tx.setContract('NOTICE_UNCONFIRMED', 'SYSTEM', 'SYSTEM', ['R-EXT-01'], '기한까지 수령 미확인 — 통보 효력 미확인 (자동 갱신 · 통보 완료 어느 쪽으로도 처리하지 않음, A-14)');
       for (const owner of ['GROUP_CEO_BOARD', 'CONTRACT_OFFICER'] as const) {
-        tx.addTask({ type: 'INCIDENT_AUTO_RENEWAL', subjectType: 'CONTRACT', subjectId: c.id, ownerRole: owner, dueAt: due, instruction: '통보 수령 미확인 에스컬레이션' }, ['R-EXT-01']);
+        tx.addTask({ type: 'ESCALATE_NOTICE_UNCONFIRMED', subjectType: 'CONTRACT', subjectId: c.id, ownerRole: owner, dueAt: due, instruction: '통보 수령 미확인 에스컬레이션 — 자동 갱신 · 통보 완료 어느 쪽으로도 처리하지 않음 (A-14)' }, ['R-EXT-01']);
       }
     }
   }

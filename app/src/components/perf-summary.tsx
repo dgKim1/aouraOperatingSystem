@@ -1,5 +1,5 @@
 /** 인플루언서 성과 요약 (표본, 방향만) — S-03 성과 근거 탭 · S-08 공용 */
-import type { InfluencerPerfRow } from '@/app/_data/types';
+import type { InfluencerPerfRow } from '@/domain/api-types';
 import { NumValue, MoneyValue } from './badges/values';
 import { ReferenceFold } from './badges/fold';
 

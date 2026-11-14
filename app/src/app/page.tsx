@@ -72,6 +72,14 @@ export default async function OverviewPage() {
         </Section>
 
         <Section title="전속계약" id="contract" actions={<Link href={`/contracts/${c.id}`} className="text-xs underline">상세</Link>}>
+          {c.autoRenewalRisk && !c.autoRenewed && (
+            <p className="mb-2 rounded-md border-2 border-red-500 bg-red-50 p-2 text-sm font-semibold text-red-900" role="alert">
+              자동 갱신 위험 — 유효 통보 없이 통보 기한이 지나면 계약이 권한 승인 없이 체결됩니다.{' '}
+              <Link href={`/contracts/${c.id}?tab=assessment`} className="underline">
+                계약 결정 상신
+              </Link>
+            </p>
+          )}
           <dl className={cn('grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-sm', c.autoRenewed && 'rounded-md bg-red-50 p-2 ring-2 ring-red-500')}>
             <dt className="text-zinc-600">대상</dt>
             <dd>{c.influencerName}</dd>
@@ -83,7 +91,16 @@ export default async function OverviewPage() {
             </dd>
             <dt className="text-zinc-600">성과 피</dt>
             <dd>
-              <UnknownChip gapId={c.performanceFee.gapId} note={c.performanceFee.note} />
+              {'gapId' in c.performanceFee ? (
+                <UnknownChip gapId={c.performanceFee.gapId} note={c.performanceFee.note} />
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-1">
+                  <TextValue t={c.performanceFee} />
+                  <Link href="/data?tab=gaps#G-02" className="text-xs underline">
+                    G-02 (원본 공백 그대로)
+                  </Link>
+                </span>
+              )}
             </dd>
             <dt className="text-zinc-600">통보 기한</dt>
             <dd className="flex flex-wrap items-center gap-2">

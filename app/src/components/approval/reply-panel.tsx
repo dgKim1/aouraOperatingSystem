@@ -2,18 +2,21 @@
 /**
  * S-06 회신 패널 — 결정은 사람만 (R-AUTH-05).
  * - 현재 역할이 requiredRole 이고 요청이 대기 상태일 때만 버튼 활성 (UI-04). 최종 판정은 서버(422 FORBIDDEN_ROLE).
- * - 1단계: API 가 없어 실제 전송하지 않는다. 입력 검증 후 보낼 요청 본문을 보여준다.
+ * - POST /api/approval-requests/:id/replies 로 보내고, 결과 패널(MutationResult)을 보여준 뒤 서버 재조회 (UI-05).
+ * - 다른 역할일 때 [권한 검증 확인]으로 같은 요청을 보내 서버 422 문구를 그대로 보여줄 수 있다(시연용 — 서버가 거부하므로 상태 불변).
  */
 import { useState } from 'react';
-import { Lock, Send } from 'lucide-react';
-import type { ApprovalItemView } from '@/app/_data/types';
-import type { ApprovalStatus, ApproverRole, ContractDecision, ItemDecision, SubjectType } from '@/domain/types';
+import { Lock, Send, ShieldQuestion } from 'lucide-react';
+import type { ApprovalItemView, ReplyResponse } from '@/domain/api-types';
+import type { ActorRole, ApprovalStatus, ApproverRole, ContractDecision, ItemDecision, SubjectType } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import { decisionText } from '@/components/labels';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { useApiAction } from '../mutation/api-client';
+import { ApiErrorBox, ResultPanel } from '../mutation/result-panel';
 
 type Outcome = 'APPROVED' | 'APPROVED_WITH_CONDITIONS' | 'REJECTED' | 'INFO_REQUESTED';
 const OUTCOME_KO: Record<Outcome, string> = { APPROVED: '승인', APPROVED_WITH_CONDITIONS: '조건부 승인', REJECTED: '반려', INFO_REQUESTED: '정보 요청' };
@@ -43,7 +46,13 @@ export function ReplyPanel({
   const [conditions, setConditions] = useState('');
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [askInfo, setAskInfo] = useState(false);
+  const [infoTarget, setInfoTarget] = useState<ActorRole>('AGENCY');
+  const [infoQuestion, setInfoQuestion] = useState('');
+  const act = useApiAction<ReplyResponse>();
+  const probe = useApiAction<ReplyResponse>();
+  const path = `/api/approval-requests/${encodeURIComponent(requestId)}/replies`;
+  const proposedItems = items.map((i) => ({ itemId: i.itemId, decision: (ITEM_DECISIONS.includes(i.proposedDecision as ItemDecision) ? i.proposedDecision : 'APPROVE') as ItemDecision }));
 
   const blockedText = status !== 'PENDING' ? `이 요청은 이미 처리되었습니다 (${status}).` : `이 요청은 ${ROLE_KO[requiredRole]}만 결정할 수 있습니다 — 현재 역할: ${current.label}`;
 
@@ -55,11 +64,9 @@ export function ReplyPanel({
     if (outcome === 'REJECTED' && !reason.trim()) errs.push('반려 사유는 필수입니다.');
     if (outcome === 'INFO_REQUESTED' && !reason.trim()) errs.push('정보 요청 질문은 필수입니다.');
     if (subjectType === 'EXPANSION_LINES' && Object.values(itemDecisions).includes('CONDITIONAL') && !conditions.trim()) errs.push('조건부 건이 있으면 조건을 입력해야 합니다.');
+    if (askInfo && !infoQuestion.trim()) errs.push('외부 정보 요청 질문을 입력하세요.');
     setErrors(errs);
-    if (errs.length) {
-      setDraft(null);
-      return;
-    }
+    if (errs.length) return;
     const body = {
       respondentRole: current.actorRole,
       outcome,
@@ -68,9 +75,37 @@ export function ReplyPanel({
         ? { itemDecisions: Object.entries(itemDecisions).map(([itemId, d]) => ({ itemId, decision: d, ...(d === 'CONDITIONAL' ? { condition: conditions } : {}) })) }
         : {}),
       ...(conditions ? { conditions } : {}),
+      ...(askInfo && (outcome === 'REJECTED' || outcome === 'INFO_REQUESTED') ? { infoRequest: { target: infoTarget, question: infoQuestion } } : {}),
       reason,
     };
-    setDraft(JSON.stringify(body, null, 2));
+    act.run(path, 'POST', body);
+  }
+
+  /** 권한 없는 역할로 같은 회신을 보내 서버 판정(422)을 확인 — 서버가 거부하므로 상태는 바뀌지 않는다 */
+  function probeServer() {
+    probe.run(path, 'POST', {
+      respondentRole: current.actorRole,
+      outcome: 'APPROVED',
+      ...(contractDecisions ? { decision: (items[0]?.proposedDecision as ContractDecision) ?? contractDecisions[0] } : {}),
+      ...(subjectType === 'EXPANSION_LINES' ? { itemDecisions: proposedItems } : {}),
+      reason: `권한 검증 확인 (${current.label})`,
+    });
+  }
+
+  if (act.result) {
+    return (
+      <div className="space-y-2">
+        <ResultPanel
+          title={`회신 처리 결과 — ${act.result.request.id} ${act.result.request.status}`}
+          result={act.result}
+          extra={
+            <p className="text-xs">
+              회신 {act.result.reply.id} · {ROLE_KO[act.result.reply.respondentRole]} · {act.result.reply.outcome} <span className="rounded border border-dashed border-zinc-500 px-1">모의</span>
+            </p>
+          }
+        />
+      </div>
+    );
   }
 
   if (!allowed) {
@@ -86,7 +121,22 @@ export function ReplyPanel({
             </Button>
           ))}
         </div>
-        {status === 'PENDING' && <p className="mt-2 text-xs text-zinc-600">상단 「현재 역할」에서 {ROLE_KO[requiredRole]}(으)로 전환하면 회신할 수 있습니다 (시연용).</p>}
+        {status === 'PENDING' && (
+          <>
+            <p className="mt-2 text-xs text-zinc-600">상단 「현재 역할」에서 {ROLE_KO[requiredRole]}(으)로 전환하면 회신할 수 있습니다 (시연용).</p>
+            <div className="mt-2 border-t pt-2">
+              <Button size="xs" variant="outline" onClick={probeServer} disabled={probe.pending}>
+                <ShieldQuestion className="size-3.5" aria-hidden /> 권한 검증 확인 — 현재 역할({current.label})로 승인 전송 시도
+              </Button>
+              <p className="mt-1 text-[11px] text-zinc-600">서버가 권한을 다시 판정합니다. 거부되면 응답 문구를 그대로 보여주고 상태는 바뀌지 않습니다.</p>
+              {probe.error && (
+                <div className="mt-2">
+                  <ApiErrorBox error={probe.error} />
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -156,6 +206,27 @@ export function ReplyPanel({
         </div>
       )}
 
+      {(outcome === 'REJECTED' || outcome === 'INFO_REQUESTED') && subjectType === 'CONTRACT' && (
+        <fieldset className="space-y-1 rounded border bg-white p-2">
+          <legend className="px-1 text-xs font-medium">외부 정보 요청 작업</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={askInfo} onChange={(e) => setAskInfo(e.target.checked)} /> 상대에게 정보 요청 작업 만들기 (계약 담당이 처리)
+          </label>
+          {askInfo && (
+            <div className="grid grid-cols-[5rem_1fr] items-center gap-2">
+              <Label htmlFor="info-target">대상</Label>
+              <select id="info-target" className="h-8 rounded border bg-white px-2 text-sm" value={infoTarget} onChange={(e) => setInfoTarget(e.target.value as ActorRole)}>
+                <option value="AGENCY">에이전시</option>
+                <option value="COREVIA">Corevia</option>
+                <option value="SCM">SCM</option>
+              </select>
+              <Label htmlFor="info-q">질문</Label>
+              <Textarea id="info-q" value={infoQuestion} onChange={(e) => setInfoQuestion(e.target.value)} placeholder="예: 성과 피 산식 · 정산 주기" className="bg-white" />
+            </div>
+          )}
+        </fieldset>
+      )}
+
       <div>
         <Label htmlFor="reason">{outcome === 'INFO_REQUESTED' ? '요청할 정보 (질문, 필수)' : outcome === 'REJECTED' ? '반려 사유 (필수)' : '사유 · 메모'}</Label>
         <Textarea id="reason" value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 bg-white" aria-invalid={errors.length > 0} />
@@ -170,22 +241,15 @@ export function ReplyPanel({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" size="sm">
-          <Send className="size-3.5" aria-hidden /> 회신 ({current.label})
+        <Button type="submit" size="sm" disabled={act.pending}>
+          <Send className="size-3.5" aria-hidden /> {act.pending ? '전송 중…' : `회신 (${current.label})`}
         </Button>
         <span className="text-xs text-zinc-700">
           모든 회신은 <span className="rounded border border-dashed border-zinc-500 px-1">모의</span> 배지로 기록됩니다.
         </span>
       </div>
 
-      {draft && (
-        <div className="rounded-md border border-dashed border-zinc-500 bg-white p-2 text-xs" role="status">
-          <p className="font-medium">전송 대기 — 2단계 API 연결 전이라 실제로 보내지 않았습니다. 상태는 바뀌지 않습니다.</p>
-          <p className="mt-1 font-mono">POST /api/approval-requests/{requestId}/replies</p>
-          <pre className="mt-1 overflow-x-auto rounded bg-zinc-100 p-2">{draft}</pre>
-          <p className="mt-1 text-zinc-600">서버 422 응답(권한 없음)은 이 자리에 문구 그대로 표시합니다. 회신 후 결과 패널에 상태 변경 · 생성 작업 링크가 나옵니다.</p>
-        </div>
-      )}
+      {act.error && <ApiErrorBox error={act.error} />}
     </form>
   );
 }

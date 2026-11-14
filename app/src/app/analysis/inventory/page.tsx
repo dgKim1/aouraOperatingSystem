@@ -2,10 +2,12 @@
 import Link from 'next/link';
 import { MoneyValue, NumValue, TextValue, UnknownChip } from '@/components/badges/values';
 import { InlineWarning } from '@/components/alerts/alert-item';
-import { PageHeader, RoleChip, Section, StubNotice } from '@/components/common';
-import { Button } from '@/components/ui/button';
+import { PageHeader, RoleChip, Section } from '@/components/common';
+import { CounterpartyReplyForm } from '@/components/mutation/counterparty-reply-form';
 import { cn } from '@/lib/utils';
 import { getInventory, getSession } from '../../_data/views';
+import { CreateReplenishment } from './create-replenishment';
+import { ReplenishmentList } from './replenishment-list';
 
 export default async function InventoryPage() {
   const [v, { role }] = await Promise.all([getInventory(), getSession()]);
@@ -14,7 +16,7 @@ export default async function InventoryPage() {
       <PageHeader id="S-09" title="재고 커버" decision="확대 기안의 주력 SKU 가 집행일까지 공급 가능한지 보고, 조건부(집행일 조정) · 보충 요청 중 무엇을 할지 정합니다." />
       <InlineWarning tone="info">캠페인 증분 수요는 표본이라 수량으로 더하지 않음 — 방향(+)만 (G-13) · in_transit 입고일 미확인 (G-08)</InlineWarning>
 
-      <Section title={`SKU 재고 커버 (풀스케일 · 스냅샷 ${v.rows[0]?.snapshotDate ?? ''})`} id="cover">
+      <Section title={`SKU 재고 커버 (풀스케일 · 기준 ${v.simDate})`} id="cover">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-sm">
             <caption className="sr-only">SKU 별 4주 평균 · 현재고 · 이동중 · 커버 · 안전재고 · 리드타임 · MOQ · 예상 품절 · 기발주</caption>
@@ -48,7 +50,7 @@ export default async function InventoryPage() {
                   </td>
                   <td className="p-2"><NumValue n={r.reported} format="dec1" /></td>
                   <td className="p-2 text-xs">
-                    {r.safetyStockWeeksMin}/{r.safetyStockWeeksMax}주 · {r.leadTimeWeeks}주 · {r.moq.toLocaleString('ko-KR')}
+                    {r.minWeeks}/{r.maxWeeks}주 · {r.leadTimeWeeks}주 · {r.moq.toLocaleString('ko-KR')}
                   </td>
                   <td className="p-2 font-mono text-xs">{r.stockoutDate ?? '-'}</td>
                   <td className="p-2 text-xs">{r.pos.length ? r.pos.map((p) => `${p.id} ${p.qty.toLocaleString('ko-KR')}EA → ${p.arrival}`).join(', ') : '-'}</td>
@@ -108,29 +110,28 @@ export default async function InventoryPage() {
               <p className="text-xs">
                 열린 질문: 기발주 SPO 가 in_transit 에 포함됐는가 · 입고일은? <UnknownChip gapId="G-08" />
               </p>
+              <CreateReplenishment
+                lineId={s.lineId}
+                skuIds={s.items.map((i) => i.skuId)}
+                canCreate={role.actorRole === 'SCM'}
+                existing={v.replenishments.filter((r) => r.triggerLineId === s.lineId && r.status !== 'REJECTED').map((r) => r.id)}
+              />
             </div>
           ))
         )}
-        {v.replenishments.length > 0 && (
-          <div className="mt-3">
-            <h4 className="mb-1 text-sm font-semibold">보충요청</h4>
-            <ul className="space-y-1 text-sm">
-              {v.replenishments.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono">{r.id}</span> {r.skuId} {r.finalQty.toLocaleString('ko-KR')}EA · 지급 {r.expectedPaymentDate} · <RoleChip role={r.requiredRole} /> <strong>{r.status}</strong>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="sm" disabled title="2단계 API 연결 후 활성">
-            보충 요청 만들기 {role.actorRole === 'SCM' ? '(현재 역할 가능 · API 연결 전)' : '(SCM 만)'}
-          </Button>
-        </div>
-        <div className="mt-2">
-          <StubNotice>보충 요청 생성(POST /api/replenishment-requests)과 SCM 회신은 2단계 API 연결 후. ④ 프리셋에서 초안(DRAFT) 상태를 확인할 수 있습니다.</StubNotice>
-        </div>
+      </Section>
+
+      <Section title={`보충요청 (${v.replenishments.length})`} id="rep">
+        {v.replenishments.length === 0 ? <p className="text-sm text-muted-foreground">보충요청이 없습니다.</p> : <ReplenishmentList items={v.replenishments} />}
+        {v.replenishments.some((r) => r.status === 'DRAFT') &&
+          (role.actorRole === 'SCM' ? (
+            <div className="mt-3">
+              <h4 className="mb-1 text-sm font-semibold">보충 검토 회신 (SCM · 승인 아님)</h4>
+              <CounterpartyReplyForm fixedFrom="SCM" outcomes={['INFO_PROVIDED', 'INSUFFICIENT', 'REJECTED']} submitLabel="보충 검토 회신 (모의)" />
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-zinc-700">초안(DRAFT) 보충요청은 SCM 검토를 기다립니다 — 상단 「현재 역할」을 SCM 으로 바꾸면 [보충 검토 회신]을 넣을 수 있습니다.</p>
+          ))}
       </Section>
     </div>
   );

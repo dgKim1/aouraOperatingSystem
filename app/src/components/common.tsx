@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { APPROVAL_STATUS_KO, FLAG_KO, FLAG_TONE, LINE_STATUS_KO } from './labels';
 import { ReferenceChip } from './badges/fold';
 import { fmtDateTime } from './format';
+import { entityHref } from './links';
 
 export function PageHeader({ id, title, decision, children }: { id: string; title: string; decision: string; children?: React.ReactNode }) {
   return (
@@ -116,33 +117,47 @@ export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: {
         <caption className="sr-only">처리 이력</caption>
         <thead className="text-left text-xs text-zinc-600">
           <tr className="border-b">
-            <th className="py-1 pr-3 font-medium">시각 (가상)</th>
+            <th className="py-1 pr-3 font-medium">시각 (가상 · 실제)</th>
             <th className="py-1 pr-3 font-medium">대상</th>
             <th className="py-1 pr-3 font-medium">이전 → 이후</th>
             <th className="py-1 pr-3 font-medium">행위자</th>
             <th className="py-1 pr-3 font-medium">규칙</th>
+            <th className="py-1 pr-3 font-medium">원인 사건</th>
             <th className="py-1 pr-3 font-medium">사유</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className="border-b align-top last:border-0">
-              <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap tabular-nums">{fmtDateTime(r.simAt)}</td>
+              <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap tabular-nums">
+                {fmtDateTime(r.simAt)}
+                <div className="text-[10px] text-zinc-500" title="실제 기록 시각">
+                  {fmtDateTime(r.createdAt)}
+                </div>
+              </td>
               <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
                 <span className="text-muted-foreground">{r.entityType}</span> <AuditEntityLink type={r.entityType} id={r.entityId} />
               </td>
               <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
                 {r.fromStatus ?? '—'} → <strong>{r.toStatus}</strong>
+                {r.fromStatus !== null && r.fromStatus === r.toStatus && <div className="text-[10px] text-zinc-600">같은 상태 유지</div>}
+                <ReplenishmentCloseNote entry={r} />
               </td>
               <td className="py-1.5 pr-3 text-xs whitespace-nowrap">
                 {ROLE_KO[r.actorRole]}
                 <span className={cn('ml-1 rounded px-1 text-[10px]', r.actorKind === 'MOCK' ? 'border border-dashed border-zinc-500' : 'bg-zinc-100')}>{ACTOR_KIND_KO[r.actorKind]}</span>
               </td>
               <td className="py-1.5 pr-3 font-mono text-[11px] whitespace-nowrap">{r.ruleIds.join(' ')}</td>
-              <td className="py-1.5 pr-3 text-xs">
-                {r.reason}
-                {r.eventId && <span className="ml-1 text-muted-foreground">({r.eventId})</span>}
+              <td className="py-1.5 pr-3 font-mono text-[11px] whitespace-nowrap">
+                {r.eventId ? (
+                  <Link href={`/history?eventId=${r.eventId}`} className="underline">
+                    {r.eventId}
+                  </Link>
+                ) : (
+                  '—'
+                )}
               </td>
+              <td className="py-1.5 pr-3 text-xs">{r.reason}</td>
             </tr>
           ))}
         </tbody>
@@ -151,8 +166,30 @@ export function AuditTable({ rows, empty = '처리 이력이 없습니다.' }: {
   );
 }
 
+/**
+ * FE-04 보충요청 종결 문구 3종 (A-30 · A-34) — 서버가 statusText 를 주면(BE-13) 그것을 쓰고, 없으면 이력의 이전 상태 + 사유 접두어로 나눈다.
+ * DRAFT → REJECTED 사유 "불필요:" = SCM 검토 '불필요' 종결 · "보충 불가:" = SCM 검토 '보충 불가' 종결 (둘 다 승인 거절 아님)
+ * SUBMITTED → REJECTED = 권한자 승인 거절
+ */
+export function replenishmentCloseText(fromStatus: string | null, toStatus: string, reason = ''): string | null {
+  if (toStatus !== 'REJECTED') return null;
+  if (fromStatus === 'DRAFT') {
+    if (reason.includes('보충 불가')) return 'SCM 검토: 보충 불가로 종결 (승인 거절 아님)';
+    return 'SCM 검토: 불필요로 종결 (승인 거절 아님)';
+  }
+  if (fromStatus === 'SUBMITTED' || fromStatus === 'INFO_REQUESTED') return '승인 거절';
+  return null;
+}
+
+function ReplenishmentCloseNote({ entry }: { entry: AuditLogEntry }) {
+  if (entry.entityType !== 'REPLENISHMENT') return null;
+  const t = replenishmentCloseText(entry.fromStatus, entry.toStatus, entry.reason);
+  if (!t) return null;
+  return <div className={cn('mt-0.5 rounded px-1 text-[10px] font-medium', t === '승인 거절' ? 'bg-red-100 text-red-900' : 'bg-cyan-50 text-cyan-900')}>{t}</div>;
+}
+
 function AuditEntityLink({ type, id }: { type: string; id: string }) {
-  const href = type === 'CONTRACT' ? `/contracts/${id}` : type === 'APPROVAL_REQUEST' ? `/approvals/${id}` : type === 'EXPANSION_LINE' ? `/proposals/PROP-2026-07?q=${id}` : type === 'TASK' ? '/tasks' : null;
+  const href = entityHref(type, id);
   return href ? (
     <Link href={href} className="font-mono underline underline-offset-2">
       {id}
@@ -162,10 +199,10 @@ function AuditEntityLink({ type, id }: { type: string; id: string }) {
   );
 }
 
-export function StubNotice({ children }: { children: React.ReactNode }) {
+export function StubNotice({ children, tag = '안내' }: { children: React.ReactNode; tag?: string }) {
   return (
     <p className="rounded-md border border-dashed border-zinc-400 bg-zinc-50 px-3 py-2 text-xs text-zinc-700" role="note">
-      <span className="mr-1 font-semibold">1단계</span>
+      <span className="mr-1 font-semibold">{tag}</span>
       {children}
     </p>
   );

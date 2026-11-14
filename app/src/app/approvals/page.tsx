@@ -63,7 +63,8 @@ export default async function ApprovalsPage() {
                       </td>
                       <td className="p-2 text-xs">
                         v{a.request.version}
-                        {a.request.supersedesId && <div>← {a.request.supersedesId}</div>}
+                        {a.request.supersedesId && <div>{a.request.supersedesId} 대체</div>}
+                        {a.supersededBy && <div className="text-zinc-600">→ {a.supersededBy} 로 넘어감</div>}
                       </td>
                     </tr>
                   );

@@ -463,13 +463,37 @@ export interface Alternative {
   requiresRole: ApproverRole;
 }
 
+/** 판단안의 사실 1건 — 도구(도메인 계산)가 돌려준 값만. key 는 안정 식별자(예 'line.PLAN-004.cp'), name 은 화면 표시명 */
+export interface AssessmentFact {
+  key: string;
+  name: string;
+  value: Sourced<unknown>;
+}
+
+export interface AssessmentRuleResult {
+  ruleId: RuleId;
+  result: unknown;
+  inputs: unknown;
+  /** 어느 대상(계약 · 기안 건 · 보충요청)에 대한 결과인가 */
+  subjectId?: string;
+}
+
+/** 판단안을 만들 때 호출한 도구 기록 (S-05 「도구 호출 목록」) */
+export interface ToolCallLog {
+  name: string;
+  input: unknown;
+  output: unknown;
+  /** AI = 모델이 호출 · SYSTEM = 모의 모드에서 코드가 같은 도구를 직접 실행 */
+  actor: 'AI' | 'SYSTEM';
+}
+
 export interface Assessment {
   id: string;
   subjectType: SubjectType;
   subjectIds: string[];
   triggerEventId: string | null;
-  facts: Sourced<unknown>[];
-  ruleResults: { ruleId: RuleId; result: unknown; inputs: unknown }[];
+  facts: AssessmentFact[];
+  ruleResults: AssessmentRuleResult[];
   alternatives: Alternative[];
   recommendation: { alternativeId: string; rationale: string };
   perspectives: { marketing: string; finance: string; contract: string; scm: string };
@@ -479,6 +503,14 @@ export interface Assessment {
   model: string;
   version: number;
   createdAt: IsoDateTime;
+  /** 규칙 기반 권고 결정 (승인요청 proposed 로 쓰인다 — AI 가 정하지 않음, DD-016) */
+  proposedDecisions?: { itemId: string; decision: string; condition?: string }[];
+  toolCalls?: ToolCallLog[];
+  /** 실시간 호출 실패 · 거절 · 숫자 출처 위반으로 모의로 대체된 이유 */
+  fallbackReason?: string | null;
+  /** 모델 응답 stop_reason (모의면 null) */
+  stopReason?: string | null;
+  warnings?: string[];
 }
 
 export type ApprovalStatus =
@@ -536,6 +568,8 @@ export type TaskType =
   | 'RESCHEDULE_CAMPAIGN'
   | 'REPLENISHMENT_REVIEW'
   | 'INCIDENT_AUTO_RENEWAL'
+  /** 통보 수령 미확인 에스컬레이션 (확장 E1, BE-01) — 자동 갱신 사고와 구분 */
+  | 'ESCALATE_NOTICE_UNCONFIRMED'
   | 'POST_DEADLINE_REPORT';
 
 export type TaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED' | 'OVERDUE';
@@ -552,6 +586,27 @@ export interface Task {
   resultNote?: string;
   /** 작업 지시 (예: 승인 조건 "집행일 2026-08-31 이후로 조정") */
   instruction?: string;
+}
+
+/** S-02 외부 회신 결과 4종: 수령확인 · 정보 제공 · 정보 부족 · 거절 */
+export type CounterpartyOutcome = 'RECEIPT_CONFIRMED' | 'INFO_PROVIDED' | 'INSUFFICIENT' | 'REJECTED';
+export type CounterpartyRole = 'AGENCY' | 'SCM' | 'COREVIA';
+
+/**
+ * 외부 모의 회신 (S-02 「외부 회신」 양식). 에이전시 · SCM · Corevia 공통.
+ * - AGENCY: 수령확인 → 계약 NOTICE_ACKNOWLEDGED, 정보 제공 · 정보 부족 · 거절 → 계약 정보 요청 작업 종료
+ * - SCM: 정보 제공 + replenishmentNeeded(false: 추가 발주 불필요 / true: 필요) → 보충요청 처리, 정보 부족 → 초안 유지, 거절 → 보충 불가
+ * - COREVIA: 정보 제공(입고 예정일) · 정보 부족 · 거절 → SCM 정보 요청 작업 종료
+ */
+export interface CounterpartyReplyInput {
+  from: CounterpartyRole;
+  outcome: CounterpartyOutcome;
+  note: string;
+  /** SCM · Corevia 가 확인한 입고 예정일 */
+  inboundExpectedDate?: IsoDate;
+  /** SCM 정보 제공 시: 추가 발주 필요 여부 */
+  replenishmentNeeded?: boolean;
+  label: 'MOCK';
 }
 
 export interface Notice {
@@ -589,6 +644,8 @@ export interface ReplenishmentRequest {
   requiredRole: ApproverRole;
   status: ReplenishmentStatus;
   openQuestions: string[];
+  /** 종결 경로 (REJECTED 일 때): SCM 검토 '불필요'(A-30) · SCM '보충 불가'(A-34) · 권한자 승인 거절 */
+  closedBy?: 'SCM_NOT_NEEDED' | 'SCM_NO_SUPPLY' | 'APPROVER' | null;
 }
 
 export interface AuditLogEntry {

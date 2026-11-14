@@ -3,13 +3,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ClaimsFold } from '@/components/badges/fold';
 import { MoneyValue, NumValue } from '@/components/badges/values';
-import { PageHeader, Section, StubNotice } from '@/components/common';
+import { PageHeader, Section } from '@/components/common';
 import { FLAG_KO } from '@/components/labels';
 import { ProposalTable } from '@/components/proposal/proposal-table';
 import type { LineFlag } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import { cn } from '@/lib/utils';
-import { getProposal, type ProposalFilters } from '../../_data/views';
+import { getApprovals, getMeta, getProposal, type ProposalFilters } from '../../_data/views';
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -22,8 +22,9 @@ export default async function ProposalPage({ params, searchParams }: { params: P
     const v = one(sp[k]);
     if (v) filters[k] = v;
   }
-  const v = await getProposal(decodeURIComponent(id), filters);
+  const [v, meta, approvals] = await Promise.all([getProposal(decodeURIComponent(id), filters), getMeta(), getApprovals()]);
   if (!v) notFound();
+  const approvalRefs = Object.fromEntries(approvals.map((a) => [a.request.id, { version: a.request.version, supersedesId: a.request.supersedesId, statusText: a.statusText }]));
   const focus = one(sp.q);
 
   if (!v.received || !v.proposal || !v.summary) {
@@ -142,10 +143,8 @@ export default async function ProposalPage({ params, searchParams }: { params: P
           </div>
           {filters.approval && <div className="text-xs">승인요청 {filters.approval} 대상만 — {chip('approval', undefined, '해제')}</div>}
         </div>
-        {v.lines.length === 0 ? <p className="text-sm text-muted-foreground">조건에 맞는 건이 없습니다.</p> : <ProposalTable lines={v.lines} focusId={focus} />}
-        <div className="mt-3">
-          <StubNotice>판단안 생성 · 승인요청 생성은 백엔드 2단계 API 연결 후 활성화됩니다. 표의 권고는 규칙 엔진(recommendLine) 결과이며 AI 문장이 아닙니다.</StubNotice>
-        </div>
+        {v.lines.length === 0 ? <p className="text-sm text-muted-foreground">조건에 맞는 건이 없습니다.</p> : <ProposalTable lines={v.lines} focusId={focus} aiMode={meta.aiMode} approvals={approvalRefs} />}
+        <p className="mt-3 text-xs text-zinc-600">표의 권고는 규칙 엔진 결과이며 AI 문장이 아닙니다. 판단안을 만든 뒤 [승인 요청 만들기]를 누르면 서버가 권한자 × 확정기한별로 묶어 요청을 만듭니다(A-11).</p>
       </Section>
     </div>
   );

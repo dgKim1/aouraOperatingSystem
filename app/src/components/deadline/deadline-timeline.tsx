@@ -4,7 +4,7 @@
  * 위치 계산은 그리기용(날짜 → 가로 위치)일 뿐 판정이 아니다.
  */
 import Link from 'next/link';
-import type { CovenantWindowView, MarkerState, TimelineItem } from '@/app/_data/types';
+import type { CovenantWindowView, MarkerState, TimelineItem } from '@/domain/api-types';
 import { diffDays } from '@/domain/dates';
 import { cn } from '@/lib/utils';
 import { SourceBadge } from '../badges/source-badge';

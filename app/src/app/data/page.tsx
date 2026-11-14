@@ -52,10 +52,10 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
         {tab === 'gaps' && (
           <ul className="space-y-1 text-sm">
             {r.gaps.map((g) => (
-              <li key={g.id} id={g.id} className="grid grid-cols-[4rem_1fr_6rem] gap-2 border-b py-1 target:bg-zinc-100 last:border-0">
+              <li key={g.id} id={g.id} className="grid grid-cols-[4rem_1fr_11rem] gap-2 border-b py-1 target:bg-zinc-100 last:border-0">
                 <span className="font-mono">{g.id}</span>
                 <span>{g.text} <span className="text-xs text-zinc-600">({g.link}) — 처리: {g.handling}</span></span>
-                <span className={cn('text-xs font-medium', g.open ? 'text-amber-800' : 'text-emerald-800')}>{g.open ? '미해결' : '현재 상태에서 해소'}</span>
+                <GapStatusCell g={g} />
               </li>
             ))}
           </ul>
@@ -87,5 +87,15 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
         )}
       </Section>
     </div>
+  );
+}
+
+/** FE-10 공백 상태 2종 — 서버 status · statusText 그대로. OPEN = "미확인" 칩, FILLED_BY_MOCK = 모의 배지 + 서버 문구. "해소"는 쓰지 않는다 */
+function GapStatusCell({ g }: { g: { status: 'OPEN' | 'FILLED_BY_MOCK'; statusText: string } }) {
+  if (g.status === 'OPEN') return <span className="inline-flex h-5 w-fit items-center self-start rounded border border-dashed border-zinc-400 bg-zinc-50 px-1.5 text-[11px] font-medium text-zinc-700">{g.statusText || '미확인'}</span>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-zinc-800">
+      <SourceBadgeStatic label="MOCK" /> {g.statusText}
+    </span>
   );
 }

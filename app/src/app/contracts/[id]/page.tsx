@@ -5,16 +5,18 @@ import { AlertOctagon } from 'lucide-react';
 import { InlineWarning } from '@/components/alerts/alert-item';
 import { SourceBadgeStatic } from '@/components/badges/source-badge';
 import { MoneyValue, NumValue, TextValue, UnknownChip } from '@/components/badges/values';
-import { ApprovalStatusBadge, AuditTable, LineStatusBadge, PageHeader, RoleChip, Section, StubNotice } from '@/components/common';
+import { ApprovalStatusBadge, AuditTable, LineStatusBadge, PageHeader, RoleChip, Section } from '@/components/common';
 import { DeadlineChip } from '@/components/deadline/deadline-chip';
 import { fmtDateTime } from '@/components/format';
 import { decisionText } from '@/components/labels';
 import { PerfSummary, SampleNotice } from '@/components/perf-summary';
 import { StatusStepper, contractSteps } from '@/components/status-stepper';
 import { TabLinks } from '@/components/tab-links';
+import { AssessButton, RequestApprovalButton } from '@/components/mutation/assessment-actions';
+import { CounterpartyReplyForm } from '@/components/mutation/counterparty-reply-form';
 import { Button } from '@/components/ui/button';
-import type { ContractTermRow } from '../../_data/types';
-import { getContract, getInfluencerRows, getSession } from '../../_data/views';
+import type { ContractTermRow } from '@/domain/api-types';
+import { getContract, getInfluencerRows, getMeta, getSession, getTasks } from '../../_data/views';
 
 const TABS = [
   { id: 'overview', label: '개요' },
@@ -32,7 +34,8 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const terminateOn = typeof sp.terminateOn === 'string' ? sp.terminateOn : undefined;
   const v = await getContract(decodeURIComponent(id), terminateOn);
   if (!v) notFound();
-  const { role } = await getSession();
+  const [{ role }, meta, tasks] = await Promise.all([getSession(), getMeta(), getTasks()]);
+  const contractTasks = tasks.filter((t) => t.subjectId === v.contract.id && (t.status === 'OPEN' || t.status === 'IN_PROGRESS' || t.status === 'OVERDUE'));
   const tab = typeof sp.tab === 'string' && TABS.some((t) => t.id === sp.tab) ? sp.tab : 'overview';
   const c = v.contract;
   const base = `/contracts/${c.id}`;
@@ -113,6 +116,14 @@ export default async function ContractPage({ params, searchParams }: { params: P
                     </th>
                     <td className="py-1.5">
                       <TermValue v={t.value} />
+                      {t.key === 'perfFee' && !('gapId' in t.value) && (
+                        <span className="ml-2 text-xs text-zinc-700">
+                          에이전시 모의 회신 문구 (A-33) — 금액으로 바꾸지 않음, 권한 판정은 연 금액 하한 그대로 ·{' '}
+                          <Link href="/data?tab=gaps#G-02" className="underline">
+                            G-02 원본 공백 그대로
+                          </Link>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -173,33 +184,53 @@ export default async function ContractPage({ params, searchParams }: { params: P
       )}
 
       {tab === 'assessment' && (
-        <Section title="판단안" id="asm">
-          {v.assessmentId ? (
-            <div className="space-y-2 text-sm">
-              <p>
-                최신 판단안{' '}
-                <Link href={`/assessments/${v.assessmentId}`} className="font-mono underline">
-                  {v.assessmentId}
-                </Link>{' '}
-                <span className="rounded border border-dashed border-zinc-500 px-1 text-[11px]">모의</span> — 대안 A 동일 조건 갱신 · B 조건변경 통보(권고) · C 해지 통보
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" disabled title="2단계 API 연결 후 활성">
-                  승인 요청 만들기
-                </Button>
-                <Button size="sm" variant="outline" disabled title="2단계 API 연결 후 활성">
-                  판단안 다시 만들기
-                </Button>
+        <Section title="판단안 · 승인 요청" id="asm">
+          {/* 버튼 위치를 판단안 유무와 상관없이 고정 — 서버 재조회 뒤에도 결과 패널(클라이언트 상태)이 유지되게 */}
+          <div className="space-y-3 text-sm">
+            {v.latestAssessment ? (
+              <div className="rounded-md border p-3">
+                <p className="flex flex-wrap items-center gap-2">
+                  최신 판단안
+                  <Link href={`/assessments/${v.latestAssessment.id}`} className="font-mono font-semibold underline">
+                    {v.latestAssessment.id}
+                  </Link>
+                  <span>v{v.latestAssessment.version}</span>
+                  <span className={v.latestAssessment.mock ? 'rounded border border-dashed border-zinc-600 px-1 text-[11px]' : 'rounded bg-emerald-600 px-1 text-[11px] text-white'}>AI: {v.latestAssessment.mock ? '모의' : '실시간'}</span>
+                  <span className="font-mono text-xs text-zinc-600">{fmtDateTime(v.latestAssessment.createdAt)}</span>
+                </p>
+                <p className="mt-1">
+                  <strong className="text-blue-900">
+                    권고 {v.latestAssessment.recommendation.alternativeId}
+                    {v.latestAssessment.recommendation.title ? ` · ${v.latestAssessment.recommendation.title}` : ''}
+                  </strong>
+                </p>
+                <p className="mt-1 flex items-start gap-1 text-xs text-zinc-700">
+                  {v.latestAssessment.mock && <SourceBadgeStatic label="MOCK" />} {v.latestAssessment.recommendation.rationale}
+                </p>
               </div>
-            </div>
-          ) : (
-            <p className="text-sm">
-              아직 판단안이 없습니다.{' '}
-              <Button size="sm" disabled title="2단계 API 연결 후 활성">
-                AI 판단안 만들기 <span className="ml-1 rounded border border-dashed px-1 text-[10px]">모의</span>
-              </Button>
-            </p>
-          )}
+            ) : (
+              <p>아직 판단안이 없습니다.</p>
+            )}
+            <AssessButton subjectType="CONTRACT" subjectIds={[c.id]} label={v.latestAssessment ? '판단안 다시 만들기' : 'AI 판단안 만들기'} aiMode={meta.aiMode} variant={v.latestAssessment ? 'outline' : 'default'} showRequestNext={false} />
+            {v.latestAssessment && (
+              <RequestApprovalButton key={v.latestAssessment.id} assessmentId={v.latestAssessment.id} disabledReason={v.canRequestApproval ? null : `지금 상태(${c.statusText})에서는 상신할 수 없습니다 — 검토 중일 때만`} />
+            )}
+            {v.assessments.length > 1 && (
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">판단안 버전</h4>
+                <ul className="space-y-0.5 text-xs">
+                  {[...v.assessments].reverse().map((a) => (
+                    <li key={a.id} className="flex flex-wrap items-center gap-2">
+                      <Link href={`/assessments/${a.id}`} className="font-mono underline">
+                        {a.id}
+                      </Link>
+                      v{a.version} · {fmtDateTime(a.createdAt)} · 권고 {a.recommendation.alternativeId} {a.mock && <span className="rounded border border-dashed border-zinc-500 px-1">모의</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
           <h4 className="mt-4 mb-1 text-sm font-semibold">계약 승인 요청</h4>
           {v.approvals.length === 0 ? (
             <p className="text-sm text-muted-foreground">승인 요청 없음</p>
@@ -210,7 +241,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
                   <Link href={`/approvals/${a.id}`} className="font-mono underline">
                     {a.id}
                   </Link>
-                  v{a.version} <RoleChip role={a.requiredRole} /> 권고 {decisionText(a.proposed[0]?.decision ?? '')} <ApprovalStatusBadge status={a.status} />
+                  v{a.version} {a.supersedesId && <span className="text-xs text-zinc-600">({a.supersedesId} 대체)</span>} <RoleChip role={a.requiredRole} /> 권고 {decisionText(a.proposed[0]?.decision ?? '')} <ApprovalStatusBadge status={a.status} />
                 </li>
               ))}
             </ul>
@@ -255,16 +286,33 @@ export default async function ContractPage({ params, searchParams }: { params: P
               ))}
             </ul>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" disabled title="2단계 API 연결 후 활성">
-              통보 발송 기록 {role.actorRole === 'CONTRACT_OFFICER' ? '(현재 역할 가능 · API 연결 전)' : '(계약 담당만)'}
-            </Button>
-            <Button size="sm" variant="outline" disabled title="2단계 API 연결 후 활성">
-              수령확인 회신 {role.id === 'AGENCY' ? '(현재 역할 가능 · API 연결 전)' : '(에이전시(모의)만)'}
-            </Button>
-          </div>
-          <div className="mt-2">
-            <StubNotice>통보 발송 · 수령확인 기록은 2단계 API(작업 완료 · 외부 회신) 연결 후 저장됩니다. 지금은 시연 프리셋(시점 이동 창)으로 결과 상태를 확인하세요.</StubNotice>
+          <div className="mt-3 space-y-2">
+            <h4 className="text-sm font-semibold">열린 계약 작업</h4>
+            {contractTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">없음</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {contractTasks.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center gap-2">
+                    <Link href={`/tasks#task-${t.id}`} className="font-mono underline">
+                      {t.id}
+                    </Link>
+                    <strong>{t.typeText}</strong> <RoleChip role={t.ownerRole} /> <span className="font-mono text-xs">기한 {fmtDateTime(t.dueAt)}</span> <span className="text-xs">{t.statusText}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-zinc-700">
+              [통보 발송 기록]은 <Link href="/tasks" className="underline">작업</Link>에서 계약 담당 역할로 「통보 발송」 작업을 완료합니다{role.actorRole === 'CONTRACT_OFFICER' ? ' (현재 역할 가능)' : ''}.
+            </p>
+            {role.actorRole === 'AGENCY' ? (
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">에이전시 회신 (모의)</h4>
+                <CounterpartyReplyForm fixedFrom="AGENCY" defaultOutcome="RECEIPT_CONFIRMED" submitLabel="에이전시 회신 기록 (모의)" />
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-700">[수령확인 회신]은 상단 「현재 역할」을 에이전시(모의)로 바꾸면 여기서 넣을 수 있습니다 (또는 사건 입력의 외부 회신).</p>
+            )}
           </div>
         </Section>
       )}

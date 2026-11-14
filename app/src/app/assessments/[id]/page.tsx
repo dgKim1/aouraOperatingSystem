@@ -4,13 +4,14 @@ import { notFound } from 'next/navigation';
 import { ClaimsFold } from '@/components/badges/fold';
 import { SourceBadge, SourceBadgeStatic } from '@/components/badges/source-badge';
 import { MoneyValue, NumValue, TextValue, UnknownChip } from '@/components/badges/values';
-import { PageHeader, RoleChip, Section, StubNotice } from '@/components/common';
+import { InlineWarning } from '@/components/alerts/alert-item';
+import { PageHeader, RoleChip, Section } from '@/components/common';
 import { fmtDateTime } from '@/components/format';
 import { decisionText } from '@/components/labels';
-import { Button } from '@/components/ui/button';
+import { AssessButton, RequestApprovalButton } from '@/components/mutation/assessment-actions';
 import type { Sourced } from '@/domain/types';
 import { cn } from '@/lib/utils';
-import { getAssessment } from '../../_data/views';
+import { getAssessment, getMeta, getSession } from '../../_data/views';
 
 function FactValue({ v }: { v: Sourced<unknown> }) {
   if (typeof v.value === 'number') {
@@ -23,14 +24,32 @@ function FactValue({ v }: { v: Sourced<unknown> }) {
 
 export default async function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const a = await getAssessment(decodeURIComponent(id));
+  const [a, meta, { role }] = await Promise.all([getAssessment(decodeURIComponent(id)), getMeta(), getSession()]);
   if (!a) notFound();
+  const label = a.mock ? 'MOCK' : 'INTERPRETED';
   return (
     <div className="space-y-4">
       <PageHeader id="S-05" title={`판단안 ${a.id}`} decision="권한자 · 담당자가 근거(사실 · 규칙 결과) · 대안 · 불확실성을 보고 승인 요청으로 넘길지, 다시 판단할지 정합니다.">
-        <span className="inline-flex h-6 items-center rounded border border-dashed border-zinc-600 px-2 text-xs font-semibold">AI: {a.aiMode === 'MOCK' ? '모의' : '실시간'}</span>
+        {a.mock ? (
+          <span className="inline-flex h-6 items-center rounded border border-dashed border-zinc-600 px-2 text-xs font-semibold">AI: 모의</span>
+        ) : (
+          <span className="inline-flex h-6 items-center rounded bg-emerald-600 px-2 text-xs font-semibold text-white">AI: 실시간</span>
+        )}
+        <span className={cn('inline-flex h-6 items-center rounded px-2 text-xs', a.provenance.ok ? 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-300' : 'bg-red-50 text-red-900 ring-1 ring-red-300')}>
+          숫자 출처 검증 {a.provenance.ok ? '통과' : '위반'}
+        </span>
       </PageHeader>
-      <StubNotice>{a.stubNote}</StubNotice>
+      {a.fallbackReason && <InlineWarning>실시간 호출 실패 → 모의로 생성: {a.fallbackReason}</InlineWarning>}
+      {a.stopReason === 'refusal' && <InlineWarning tone="danger">AI 가 판단안 작성을 거절했습니다 — 규칙 결과만 표시합니다 (숫자 · 권한자는 규칙 엔진 값 그대로).</InlineWarning>}
+      {a.warnings.length > 0 && (
+        <InlineWarning tone="info">
+          {a.warnings.map((w) => (
+            <span key={w} className="block">
+              {w}
+            </span>
+          ))}
+        </InlineWarning>
+      )}
 
       <Section title="헤더" id="h">
         <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
@@ -55,15 +74,33 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
         <Section title="확인한 사실 (도구 반환값)" id="facts">
           <ul className="space-y-1.5 text-sm">
             {a.facts.map((f) => (
-              <li key={f.name} className="flex flex-wrap items-center gap-2">
+              <li key={f.key} className="flex flex-wrap items-center gap-2">
                 <span className="w-56 text-zinc-700">{f.name}</span>
                 <FactValue v={f.value} />
               </li>
             ))}
           </ul>
           <details className="mt-2 text-xs">
-            <summary className="cursor-pointer underline">도구 호출 목록</summary>
-            <p className="mt-1 text-muted-foreground">도구명 · 입력 · 반환값은 2단계 AI 에이전트 연결 후 표시됩니다.</p>
+            <summary className="cursor-pointer underline">도구 호출 목록 ({a.toolCalls.length})</summary>
+            {a.toolCalls.length === 0 ? (
+              <p className="mt-1 text-muted-foreground">기록된 도구 호출이 없습니다.</p>
+            ) : (
+              <ol className="mt-1 space-y-1">
+                {a.toolCalls.map((t, i) => (
+                  <li key={`${t.name}-${i}`} className="rounded border p-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono font-semibold">{t.name}</span>
+                      <span className={t.actor === 'AI' ? 'rounded bg-emerald-100 px-1' : 'rounded border border-dashed border-zinc-500 px-1'}>{t.actor === 'AI' ? 'AI (모델 호출)' : '시스템 (모의 모드 코드 실행)'}</span>
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-zinc-600">입력 · 반환</summary>
+                      <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-50 p-1 text-[10px] whitespace-pre-wrap">입력 {JSON.stringify(t.input, null, 1)}</pre>
+                      <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-50 p-1 text-[10px] whitespace-pre-wrap">반환 {JSON.stringify(t.output, null, 1)}</pre>
+                    </details>
+                  </li>
+                ))}
+              </ol>
+            )}
           </details>
         </Section>
         <Section title="규칙 결과" id="rules">
@@ -131,8 +168,20 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
 
       <Section title="권고와 이유" id="rec">
         <p className="flex flex-wrap items-start gap-2 text-sm">
-          <SourceBadgeStatic label="MOCK" /> {a.recommendation.rationale}
+          <SourceBadgeStatic label={label} /> {a.recommendation.rationale}
         </p>
+        {a.proposedDecisions && a.proposedDecisions.length > 0 && (
+          <ul className="mt-2 space-y-0.5 text-sm">
+            {a.proposedDecisions.map((d) => (
+              <li key={d.itemId}>
+                <span className="font-mono text-xs">{d.itemId}</span> 권고 <strong>{decisionText(d.decision)}</strong>
+                {d.condition && <span className="text-xs text-amber-800"> · 조건: {d.condition}</span>}
+                <SourceBadgeStatic label="AGGREGATED" className="ml-1" />
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-1 text-xs text-zinc-600">건별 권고 · 권한자는 규칙 엔진 결과(AI 가 정하지 않음). AI 는 대안 설명 문장만 씁니다.</p>
       </Section>
 
       <Section title="관점별 근거" id="persp">
@@ -148,7 +197,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
             <div key={k} className="rounded border p-2">
               <dt className="text-xs font-semibold text-zinc-600">{k}</dt>
               <dd className="flex items-start gap-1">
-                <SourceBadgeStatic label="MOCK" /> {t}
+                <SourceBadgeStatic label={label} /> {t}
               </dd>
             </div>
           ))}
@@ -175,17 +224,26 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
         </ul>
       </ClaimsFold>
 
-      <div className="flex flex-wrap gap-2">
-        <Button disabled title="2단계 API 연결 후 활성">
-          승인 요청 만들기
-        </Button>
-        <Button variant="outline" disabled title="2단계 API 연결 후 활성">
-          다시 판단
-        </Button>
-        <Link href="/approvals" className="inline-flex items-center text-sm underline">
-          승인함으로
-        </Link>
-      </div>
+      <Section title="다음 행동" id="next">
+        <div className="space-y-3">
+          {a.approvalRequestIds.length > 0 ? (
+            <p className="text-sm">
+              이 판단안으로 만든 승인요청:{' '}
+              {a.approvalRequestIds.map((r) => (
+                <Link key={r} href={`/approvals/${r}`} className="mr-2 font-mono underline">
+                  {r}
+                </Link>
+              ))}
+            </p>
+          ) : (
+            <RequestApprovalButton assessmentId={a.id} />
+          )}
+          <AssessButton subjectType={a.subjectType} subjectIds={a.subjectIds} label="다시 판단" aiMode={meta.aiMode} variant="outline" showRequestNext={false} />
+          <Link href="/approvals" className="inline-flex items-center text-sm underline">
+            승인함으로 (현재 역할 {role.label})
+          </Link>
+        </div>
+      </Section>
     </div>
   );
 }

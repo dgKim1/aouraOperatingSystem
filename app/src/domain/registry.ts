@@ -1,9 +1,8 @@
 /**
- * 데이터 출처 · 가정 · 공백 · 주장 목록 — docs/ONTOLOGY.md 5절 · 6절과 회의록을 화면용으로 옮긴 모의 응답.
- * 2단계에서 GET /api/data-registry 로 대체한다 (문서가 기준, 이 파일은 사본).
+ * 데이터 출처 · 가정 · 공백 · 주장 · 원본 불일치 목록 — docs/ONTOLOGY.md 5절 · 6절, 회의록에서 옮긴 것 (문서가 기준, 이 파일은 사본).
+ * GET /api/data-registry 와 판단안(unknowns · claimsCited)이 같은 목록을 쓴다.
  */
-import 'server-only';
-import type { SourceRef } from '@/domain/types';
+import type { SourceRef } from './types';
 
 export const ASSUMPTIONS: { id: string; text: string; reason: string; usedIn: string }[] = [
   { id: 'A-01', text: '주문 1건 = 1EA → 제품원가 · 배송비를 주문당 1회', reason: '주문 행에 수량 없음 (A05 5절 "가정이 필요")', usedIn: 'R-CP' },
@@ -32,6 +31,14 @@ export const ASSUMPTIONS: { id: string; text: string; reason: string; usedIn: st
   { id: 'A-24', text: '모의 회신 문구 · 날짜 (시연 시나리오)', reason: '외부 승인 대체', usedIn: '시연' },
   { id: 'A-25', text: '기한 경고 단계 D-7 / D-3', reason: '화면 표시용', usedIn: 'R-DL-03' },
   { id: 'A-26', text: '집행일이 확정기한보다 앞선 건은 결정 필요 시점을 앞당겨 표시', reason: 'settlement_date 의미 미확정', usedIn: 'R-DL-05' },
+  { id: 'A-27', text: '정보 요청 작업(INFO_REQUEST, SCM REPLENISHMENT_REVIEW 포함) 기한 = min(생성일 + 3일, 관련 원본 기한 − 2일)', reason: '원본에 회신 기한 없음 — 재판단 · 재상신할 시간을 남긴다', usedIn: '작업 기한' },
+  { id: 'A-28', text: '사후 보고 · 사고 대응 작업 기한 = 계기 시점 + 7일', reason: '원본에 사후 보고 기한 없음', usedIn: 'POST_DEADLINE_REPORT · INCIDENT_AUTO_RENEWAL · ESCALATE_NOTICE_UNCONFIRMED' },
+  { id: 'A-29', text: '그룹 보고(REPORT_TO_GROUP) 기한 = 해당 승인요청의 원본 기한 당일', reason: '정책은 "그룹 보고"만 규정, 시점 없음', usedIn: 'R-AUTH-01' },
+  { id: 'A-30', text: 'SCM 검토에서 "보충 불필요"로 회신된 보충요청 초안은 승인 절차 없이 DRAFT → REJECTED', reason: '초안은 현금 약정이 아니므로 권한자 승인이 필요 없다', usedIn: '보충요청' },
+  { id: 'A-31', text: '기안 금액 정정이 들어오면 권한 판정용 기안 총액을 다시 계산하고 25건 전부 재판정 (부결 · 취소는 총액을 줄이지 않음)', reason: '원본에 기안 정정 절차 없음', usedIn: 'R-AUTH-01 · R-AUTH-06' },
+  { id: 'A-32', text: '재무팀 공식 전망 week(월요일) = 그 월요일에 끝나는 기간(직전 화 ~ 해당 월, 첫 주 7/1 ~ 7/6). 대조값 = 재전망의 week 날짜 종가, 하회 = 기간 내 영업일 중 종가 < 30억', reason: 'week 정의가 원본에 없음(미확인) — forecast_date 6/30 · 13행 모두 월요일 · 직전 종가에서 이어짐(집계 확인)', usedIn: 'R-CASH-03 · S-10 비교표' },
+  { id: 'A-33', text: '에이전시 「정보 제공」 모의 회신 문구를 계약 성과 피 조건(performanceFeeTerms)에 모의 값으로 기록 — 금액 · 비율로 바꾸지 않고, 권한 판정 연 금액은 계속 하한 28억', reason: '원본에 성과 피 산식 없음(G-02), 회신은 모의 — 원본 공백은 해소된 것이 아님', usedIn: 'R-AUTH-02 · G-02' },
+  { id: 'A-34', text: 'SCM 「거절(보충 불가)」 모의 회신이면 보충요청 초안을 승인 절차 없이 DRAFT → REJECTED(보충 불가)로 종결하고 연결 기안 건 공급 전망을 NO_SUPPLY 로', reason: '원본에 SCM 검토 거절 절차 없음 — 품절 제약을 회신 결과로 지우지 않는다', usedIn: '보충요청 · R-INV-03' },
 ];
 
 export const GAPS: { id: string; text: string; link: string; handling: string }[] = [

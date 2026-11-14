@@ -12,6 +12,8 @@ import { ROLE_KO } from '@/domain/types';
 import { cn } from '@/lib/utils';
 import { getApproval, getSession } from '../../_data/views';
 
+const OUTCOME_KO = { APPROVED: '승인', APPROVED_WITH_CONDITIONS: '조건부 승인', REJECTED: '반려', INFO_REQUESTED: '정보 요청' } as const;
+
 export default async function ApprovalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [v, { role }] = await Promise.all([getApproval(decodeURIComponent(id)), getSession()]);
@@ -21,14 +23,25 @@ export default async function ApprovalDetailPage({ params }: { params: Promise<{
     <div className="space-y-4">
       <PageHeader id="S-06" title={`승인 요청 ${a.id}`} decision={`${ROLE_KO[a.requiredRole]}이(가) ${v.subjectText}에 대해 권고안을 승인 · 조건부 승인 · 반려 · 정보 요청 중 하나로 결정합니다.`}>
         <ApprovalStatusBadge status={a.status} />
-        <span className="text-xs text-zinc-600">v{a.version}</span>
+        <span className="text-xs text-zinc-600">
+          {v.statusText} · v{a.version}
+        </span>
       </PageHeader>
 
-      {a.status === 'SUPERSEDED' && <InlineWarning tone="info">이 요청은 {v.supersededBy ? <Link className="underline" href={`/approvals/${v.supersededBy}`}>{v.supersededBy}</Link> : '새 요청'} 로 대체됨 — 대체된 요청에는 회신할 수 없습니다.</InlineWarning>}
+      {a.status === 'SUPERSEDED' && (
+        <InlineWarning tone="info">
+          이 요청은 {v.supersededBy ? <Link className="font-mono underline" href={`/approvals/${v.supersededBy}`}>{v.supersededBy}</Link> : '새 요청'} 로 대체됨 — 대체된 요청에는 회신할 수 없습니다.
+        </InlineWarning>
+      )}
+      {a.status !== 'SUPERSEDED' && v.supersededBy && (
+        <InlineWarning tone="info">
+          회신 결과는 그대로 유효하지만, 권한자가 바뀐 건은 재승인 요청 <Link className="font-mono underline" href={`/approvals/${v.supersededBy}`}>{v.supersededBy}</Link> 로 넘어갔습니다 (R-AUTH-06). 건별 현재 상태는 아래 「요청 요약」에서 확인하세요.
+        </InlineWarning>
+      )}
       {a.status === 'EXPIRED' && <InlineWarning tone="danger">기한 경과로 만료 — 미회신 상태로 원본 기한({a.hardDeadline})이 지났습니다.</InlineWarning>}
       {a.supersedesId && (
         <InlineWarning tone="info">
-          재상신 v{a.version} — 이전 요청 <Link className="underline" href={`/approvals/${a.supersedesId}`}>{a.supersedesId}</Link> 대체
+          {a.subjectType === 'CONTRACT' ? '재상신' : '재승인 요청'} v{a.version} — 이전 요청 <Link className="font-mono underline" href={`/approvals/${a.supersedesId}`}>{a.supersedesId}</Link> 대체
         </InlineWarning>
       )}
 
@@ -45,7 +58,7 @@ export default async function ApprovalDetailPage({ params }: { params: Promise<{
                     <Link href={i.href} className="text-sm font-medium underline underline-offset-2">
                       {i.title}
                     </Link>
-                    {i.status && <span className="text-xs text-zinc-600">현재 {i.status}</span>}
+                    {i.status && <span className="text-xs text-zinc-600">현재 상태 {i.status}</span>}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
                     <span className={cn('font-semibold', i.proposedDecision === 'REJECT' ? 'text-red-800' : i.proposedDecision === 'CONDITIONAL' ? 'text-amber-800' : 'text-blue-900')}>권고: {i.proposedText}</span>
@@ -136,7 +149,7 @@ export default async function ApprovalDetailPage({ params }: { params: Promise<{
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs">{r.id}</span>
                       <RoleChip role={r.respondentRole} />
-                      <strong>{r.outcome}</strong>
+                      <strong>{OUTCOME_KO[r.outcome as keyof typeof OUTCOME_KO] ?? r.outcome}</strong>
                       <SourceBadgeStatic label={r.label} />
                       <span className="font-mono text-xs text-zinc-600">{fmtDateTime(r.simAt)}</span>
                     </div>

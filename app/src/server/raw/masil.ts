@@ -33,11 +33,17 @@ export interface LoadedMasil {
   tables: Record<MasilFileKey, RawTable>;
 }
 
+/** 원본 파일에서 읽기 */
 export function loadMasil(): LoadedMasil {
   const t = {} as Record<MasilFileKey, RawTable>;
   for (const key of Object.keys(MASIL_FILES) as MasilFileKey[]) {
     t[key] = readRawTable(MASIL_FILES[key]);
   }
+  return fromTables(t);
+}
+
+/** 원본 테이블(파일 · DB raw_rows 어디서 읽었든 같은 모양) → 도메인 데이터셋 */
+export function fromTables(t: Record<MasilFileKey, RawTable>): LoadedMasil {
   const dataset: MasilDataset = {
     influencers: t.influencer.rows.map((r) => ({
       id: v(r, 'influencer_id'),
@@ -201,4 +207,13 @@ let cache: LoadedMasil | null = null;
 export function getMasil(): LoadedMasil {
   cache ??= loadMasil();
   return cache;
+}
+
+/** DB 등 다른 경로에서 읽은 원본을 캐시에 넣는다 (원본 폴더가 없는 실행 환경) */
+export function setMasil(m: LoadedMasil): void {
+  cache = m;
+}
+
+export function hasMasil(): boolean {
+  return cache !== null;
 }

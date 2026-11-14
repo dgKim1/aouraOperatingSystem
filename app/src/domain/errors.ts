@@ -1,5 +1,5 @@
 /** 도메인 오류 — API 에서 그대로 {error:{code,message,details}} 와 HTTP 상태로 바뀐다 (SCREEN_SPEC 4절) */
-export type DomainErrorCode = 'FORBIDDEN_ROLE' | 'INVALID_TRANSITION' | 'NOT_FOUND' | 'INFO_MISSING' | 'CLOCK_BACKWARD';
+export type DomainErrorCode = 'FORBIDDEN_ROLE' | 'INVALID_TRANSITION' | 'NOT_FOUND' | 'INFO_MISSING' | 'CLOCK_BACKWARD' | 'VALIDATION' | 'CONFLICT';
 
 const STATUS: Record<DomainErrorCode, number> = {
   FORBIDDEN_ROLE: 422,
@@ -7,6 +7,8 @@ const STATUS: Record<DomainErrorCode, number> = {
   NOT_FOUND: 404,
   INFO_MISSING: 422,
   CLOCK_BACKWARD: 409,
+  VALIDATION: 422,
+  CONFLICT: 409,
 };
 
 export class DomainError extends Error {

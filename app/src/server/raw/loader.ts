@@ -1,39 +1,31 @@
 /**
  * 원본 데이터 읽기 전용 로더. 원본 파일을 쓰거나 옮기지 않는다(CLAUDE.md 절대 규칙 1).
- * 경로: 환경변수 RAW_DATA_DIR 또는 app/ 기준 ../01_참가자_배포용/04_원본데이터
+ * 경로: 환경변수 RAW_DATA_DIR(절대 경로) 또는 app/ 기준 ../01_참가자_배포용/04_원본데이터.
+ *
+ * next build 의 파일 추적(output file tracing)이 이 동적 경로 때문에 프로젝트 전체를 서버 산출물에 넣지 않도록
+ * `turbopackIgnore` 주석으로 추적에서 뺀다. 원본 CSV 는 빌드 산출물(.next · public)에 들어가지 않는다 —
+ * docker 이미지에 넣는 방식은 별도 결정(RAW_DATA_DIR 로 위치만 알려 준다).
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { MASIL_FILES, type MasilFileKey } from '@/domain/files';
 import { parsePipeCsv, type RawTable } from './csv';
 
+export { MASIL_FILES, type MasilFileKey };
+
 export function rawRoot(): string {
-  return process.env.RAW_DATA_DIR ?? path.resolve(process.cwd(), '..', '01_참가자_배포용', '04_원본데이터');
+  const fromEnv = process.env.RAW_DATA_DIR;
+  if (fromEnv) return fromEnv;
+  return path.join(/*turbopackIgnore: true*/ process.cwd(), '..', '01_참가자_배포용', '04_원본데이터');
+}
+
+/** 원본 폴더가 이 실행 환경에 있는가 (없으면 DB 의 raw_rows 에서 읽는다) */
+export function rawAvailable(): boolean {
+  return existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ rawRoot(), MASIL_FILES.budgetPlan));
 }
 
 /** relFile 예: '02_masil/marketing/mkt_budget_plan_ms.csv' */
 export function readRawTable(relFile: string): RawTable {
-  const abs = path.join(rawRoot(), relFile);
-  return parsePipeCsv(readFileSync(abs, 'utf8'), relFile);
+  const abs = path.join(/*turbopackIgnore: true*/ rawRoot(), relFile);
+  return parsePipeCsv(readFileSync(/*turbopackIgnore: true*/ abs, 'utf8'), relFile);
 }
-
-export const MASIL_FILES = {
-  influencer: '02_masil/master/m_influencer_ms.csv',
-  campaign: '02_masil/master/m_campaign_ms.csv',
-  channel: '02_masil/master/m_channel_ms.csv',
-  sku: '02_masil/master/m_sku_ms.csv',
-  budgetPlan: '02_masil/marketing/mkt_budget_plan_ms.csv',
-  orders: '02_masil/marketing/mkt_orders_ms.csv',
-  returns: '02_masil/marketing/mkt_returns_ms.csv',
-  coupons: '02_masil/marketing/mkt_coupons_ms.csv',
-  adSpend: '02_masil/marketing/mkt_ad_spend_ms.csv',
-  costMaster: '02_masil/marketing/mkt_cost_master_ms.csv',
-  inventory: '02_masil/inventory/sku_inventory_ms.csv',
-  weeklySales: '02_masil/inventory/sku_weekly_sales_ms.csv',
-  purchaseOrders: '02_masil/inventory/sc_purchase_orders_ms.csv',
-  cashDaily: '02_masil/financials/fin_cash_daily_ms.csv',
-  ar: '02_masil/financials/fin_ar_aging_ms.csv',
-  ap: '02_masil/financials/fin_ap_aging_ms.csv',
-  cashForecast: '02_masil/financials/fin_cash_forecast_ms.csv',
-} as const;
-
-export type MasilFileKey = keyof typeof MASIL_FILES;

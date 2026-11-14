@@ -4,7 +4,8 @@
  */
 import { isInWindows } from './cash';
 import { DomainError } from './errors';
-import type { ApproverRole, DateWindow, IsoDate, Krw, Routing, RoutingReason } from './types';
+import type { ActorRole, ApproverRole, DateWindow, IsoDate, Krw, Routing, RoutingReason } from './types';
+import { ROLE_KO } from './types';
 
 export const LINE_LIMIT_KRW = 10_000_000; // 건별 1천만원 이하 전결
 export const PROPOSAL_LIMIT_KRW = 100_000_000; // 기안 총액 1억원 초과
@@ -102,7 +103,7 @@ export function routeReplenishment(req: { expectedPaymentDate: IsoDate }, window
 /** R-AUTH-05 회신은 requiredRole 만 가능. 하위 권한자 · AI · 시스템은 불가 */
 export function assertCanReply(role: string, request: { requiredRole: ApproverRole }): void {
   if (role !== request.requiredRole) {
-    throw new DomainError('FORBIDDEN_ROLE', `권한 없음: 이 요청은 ${request.requiredRole} 만 회신할 수 있음 (회신자 ${role})`, {
+    throw new DomainError('FORBIDDEN_ROLE', `권한 없음: 이 요청은 ${ROLE_KO[request.requiredRole]}만 결정할 수 있습니다 (회신자 ${ROLE_KO[role as ActorRole] ?? role})`, {
       requiredRole: request.requiredRole,
       respondentRole: role,
     });

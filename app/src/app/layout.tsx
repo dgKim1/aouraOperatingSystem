@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { AppHeader } from '@/components/shell/app-header';
+import { ResultDock } from '@/components/mutation/result-dock';
 import { Legend } from '@/components/shell/legend';
 import { SideNav } from '@/components/shell/side-nav';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { DEMO_ROLES, getApprovals, getMeta, getSession, getTasks } from './_data/views';
-import { PRESETS } from './_data/world';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -27,13 +27,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             meta={meta}
             roles={DEMO_ROLES.map((r) => ({ id: r.id, label: r.label }))}
             roleId={session.role.id}
-            presets={PRESETS.map((p) => ({ id: p.id, title: p.title, description: p.description }))}
           />
           <div className="flex">
             <aside className="hidden w-48 shrink-0 border-r bg-zinc-50 md:block">
               <SideNav badges={{ '/approvals': myPending, '/tasks': overdue }} />
             </aside>
             <main id="main" className="min-w-0 flex-1 p-4 pb-16 md:p-6">
+              <ResultDock />
               {children}
             </main>
           </div>

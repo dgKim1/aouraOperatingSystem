@@ -1,90 +1,149 @@
 'use client';
 /**
- * 시점 이동 (S-01). 실제 이동(POST /api/clock/advance)은 2단계 API 를 기다린다 — 확인 버튼 비활성.
- * 1단계에서는 시연 프리셋(도메인 재생, 모의)으로 시점을 바꿔 상태 변화를 확인한다.
+ * 시점 이동 (S-01 · FE-02). 날짜 입력 → [미리보기] GET /api/clock/preview (저장 없음) → [이동] POST /api/clock/advance → 서버 재조회.
+ * 지나가는 기한 · 생길 전이 · 작업은 서버가 기한 감시를 돌린 결과를 그대로 보여준다 — 화면에서 날짜 비교로 만들지 않는다.
+ * 과거로 이동은 서버가 409 CLOCK_BACKWARD 로 거부하고, 그 문구를 그대로 보여준다.
  */
 import { useState, useTransition } from 'react';
-import { Clock } from 'lucide-react';
-import { setPreset } from '@/app/_actions/session';
+import Link from 'next/link';
+import { Clock, Eye } from 'lucide-react';
+import type { ClockResponse } from '@/domain/api-types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { fmtDateTime } from '../format';
+import { callApi, useApiAction, type ApiFailure } from '../mutation/api-client';
+import { ApiErrorBox, ResultPanel } from '../mutation/result-panel';
 
-export interface PresetOption {
-  id: string;
-  title: string;
-  description: string;
-}
+type Preview = ClockResponse & { preview: true; passingDeadlines: { kind: string; id: string; deadline: string }[] };
 
-export function ClockDialog({ simNow, presets, currentPreset }: { simNow: string; presets: PresetOption[]; currentPreset: string }) {
-  const [to, setTo] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+const KIND_KO: Record<string, string> = { CONTRACT_NOTICE: '계약 통보 기한', LINE_DEADLINE: '기안 확정기한', APPROVAL: '승인요청 원본 기한', TASK: '작업 기한' };
+
+/** 시연 문서(DEMO_SCENARIOS)의 사건 시각 — 입력 편의용 바로가기(계산값 아님) */
+const DEMO_TIMES = ['2026-07-10T14:00', '2026-07-13T10:00', '2026-07-14T11:00', '2026-07-17T09:00', '2026-07-18T00:00', '2026-07-20T09:00'];
+
+const toIso = (local: string) => `${local}:00+09:00`;
+
+export function ClockDialog({ simNow }: { simNow: string }) {
   const [open, setOpen] = useState(false);
-  const minLocal = simNow.slice(0, 16);
+  const [to, setTo] = useState('');
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewError, setPreviewError] = useState<ApiFailure | null>(null);
+  const [loading, startPreview] = useTransition();
+  const adv = useApiAction<ClockResponse>();
+  const nowLocal = simNow.slice(0, 16);
 
-  function check(v: string) {
+  function choose(v: string) {
     setTo(v);
-    // 형식 확인만 (과거 이동 금지는 서버가 409 CLOCK_BACKWARD 로 판정 — 여기서는 안내만)
-    setError(v && v < minLocal ? '기준시각 이전으로는 이동할 수 없습니다 (시나리오 초기화로만 처음으로 돌아감)' : null);
+    setPreview(null);
+    setPreviewError(null);
+    adv.reset();
+  }
+
+  function runPreview() {
+    if (!to) return;
+    startPreview(async () => {
+      const r = await callApi<Preview>(`/api/clock/preview?to=${encodeURIComponent(toIso(to))}`, 'GET');
+      if (r.ok) {
+        setPreview(r.data);
+        setPreviewError(null);
+      } else {
+        setPreview(null);
+        setPreviewError(r);
+      }
+    });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) choose('');
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" variant="secondary" className="h-7">
           <Clock className="size-3.5" aria-hidden /> 시점 이동
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>시점 이동</DialogTitle>
-          <DialogDescription>가상 기준시각을 앞으로 옮기면 기한 감시가 자동 갱신 · 자동 확정 · 작업 기한 경과를 처리합니다.</DialogDescription>
+          <DialogDescription>
+            가상 기준시각 {fmtDateTime(simNow)} 을 앞으로 옮기면 기한 감시가 자동 갱신 · 자동 확정 · 작업 기한 경과를 처리합니다. 먼저 미리보기로 무엇이 바뀌는지 확인하세요.
+          </DialogDescription>
         </DialogHeader>
+
         <div className="space-y-2">
           <Label htmlFor="clock-to">이동할 시각 (KST)</Label>
-          <Input id="clock-to" type="datetime-local" min={minLocal} value={to} onChange={(e) => check(e.target.value)} aria-invalid={!!error} aria-describedby="clock-help" />
-          {error && (
-            <p className="text-xs text-red-700" role="alert">
-              {error}
-            </p>
-          )}
-          <p id="clock-help" className="rounded border border-dashed border-zinc-400 bg-zinc-50 p-2 text-xs text-zinc-700">
-            지나가는 기한 미리보기와 실제 이동은 백엔드 API(<code>POST /api/clock/advance</code>) 연결 후 활성화됩니다 (1단계).
-          </p>
-        </div>
-        <div className="space-y-1">
-          <p className="text-sm font-medium">
-            시연 프리셋으로 이동 <span className="rounded border border-dashed border-zinc-500 px-1 text-[11px]">모의</span>
-          </p>
-          <p className="text-xs text-muted-foreground">시나리오 사건을 도메인 규칙으로 재생한 상태를 봅니다. 저장되지 않습니다.</p>
-          <ul className="max-h-56 space-y-1 overflow-y-auto">
-            {presets.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() =>
-                    start(async () => {
-                      await setPreset(p.id);
-                      setOpen(false);
-                    })
-                  }
-                  className={`w-full rounded border px-2 py-1 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${p.id === currentPreset ? 'border-blue-600 bg-blue-50' : ''}`}
-                  aria-current={p.id === currentPreset ? 'true' : undefined}
-                >
-                  <span className="font-medium">{p.title}</span>
-                  <span className="block text-xs text-muted-foreground">{p.description}</span>
-                </button>
-              </li>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input id="clock-to" type="datetime-local" className="w-56" value={to} onChange={(e) => choose(e.target.value)} />
+            <Button size="sm" variant="outline" onClick={runPreview} disabled={!to || loading}>
+              <Eye className="size-3.5" aria-hidden /> {loading ? '확인 중…' : '미리보기'}
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            <span className="text-zinc-600">시연 시각</span>
+            {DEMO_TIMES.filter((t) => t > nowLocal).map((t) => (
+              <button key={t} type="button" onClick={() => choose(t)} className="rounded border px-1.5 py-0.5 font-mono hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                {t.replace('T', ' ')}
+              </button>
             ))}
-          </ul>
+          </div>
         </div>
+
+        {previewError && <ApiErrorBox error={previewError} />}
+
+        {preview && !adv.result && (
+          <div className="space-y-2 rounded-md border border-sky-300 bg-sky-50/60 p-3 text-sm" role="status" aria-live="polite">
+            <p className="font-semibold">미리보기 — 아직 저장되지 않았습니다</p>
+            <div>
+              <h4 className="text-xs font-semibold">지나가는 기한 ({preview.passingDeadlines.length})</h4>
+              {preview.passingDeadlines.length === 0 ? (
+                <p className="text-xs text-zinc-600">없음</p>
+              ) : (
+                <ul className="mt-1 space-y-0.5 text-xs">
+                  {preview.passingDeadlines.map((d) => (
+                    <li key={`${d.kind}-${d.id}`} className="flex flex-wrap gap-2">
+                      <span className="w-32 text-zinc-700">{KIND_KO[d.kind] ?? d.kind}</span>
+                      <span className="font-mono">{d.id}</span>
+                      <span className="font-mono">{d.deadline.length > 10 ? fmtDateTime(d.deadline) : d.deadline}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <ResultPanel title="이동하면 생길 처리" result={preview} />
+          </div>
+        )}
+
+        {adv.error && <ApiErrorBox error={adv.error} />}
+        {adv.result && (
+          <ResultPanel
+            title={`시점 이동 완료 — ${fmtDateTime(adv.result.simNow)}`}
+            result={adv.result}
+            extra={
+              <p className="text-xs">
+                화면을 서버에서 다시 조회했습니다. <Link href="/history" className="underline">처리 이력</Link>에서 전체 증거를 볼 수 있습니다.
+              </p>
+            }
+          />
+        )}
+
+        <p className="text-xs text-zinc-600">
+          처음 상태로 돌아가려면 <Link href="/scenarios" className="underline" onClick={() => setOpen(false)}>시연 시나리오</Link>에서 초기화 후 재생합니다 (과거로 이동 불가).
+        </p>
+
         <DialogFooter>
-          <Button disabled title="2단계 API 연결 후 활성">
-            이동 (API 연결 전)
-          </Button>
+          {adv.result ? (
+            <Button onClick={() => setOpen(false)}>닫기</Button>
+          ) : (
+            <Button onClick={() => adv.run('/api/clock/advance', 'POST', { to: toIso(to) })} disabled={!preview || adv.pending} title={preview ? undefined : '먼저 미리보기를 확인하세요'}>
+              {adv.pending ? '이동 중…' : preview ? `${to.replace('T', ' ')} 으로 이동` : '이동 (미리보기 후)'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

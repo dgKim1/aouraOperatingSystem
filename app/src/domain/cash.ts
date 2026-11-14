@@ -110,3 +110,50 @@ export function simulateCash(ds: Ds, opts: CashSimOptions): CashSimResult {
 export function isInWindows(date: IsoDate, windows: readonly DateWindow[]): boolean {
   return windows.some((w) => date >= w.start && date <= w.end);
 }
+
+// ───────────────────────── BE-10 공식 전망(주장) 대 재전망 대조 (A-32 · R-CASH-03) ─────────────────────────
+
+export interface OfficialComparisonRow {
+  /** 공식 전망 week (월요일) */
+  week: IsoDate;
+  /** A-32: 직전 화요일 ~ week 월요일 (첫 행은 asOf ~ week) */
+  periodStart: IsoDate;
+  periodEnd: IsoDate;
+  /** CLAIM — 재무팀 공식 전망 projected_closing_krw */
+  official: number;
+  /** AGGREGATED — 재전망의 week 날짜 종가 (영업일이 아니면 직전 영업일) */
+  recalculated: number;
+  /** 재전망 − 공식 (음수 = 재전망이 낮음) */
+  diff: number;
+  /** 기간 안 영업일 중 종가 < 30억 인 날 수 (재전망 기준) */
+  belowDays: number;
+  belowThreshold: boolean;
+}
+
+/**
+ * 대조 전용 — 이 결과는 하회 구간 · 권한 판정 · 경고 · 권고의 입력이 아니다 (공식 전망은 주장, R-CLAIM-01).
+ * run 은 재전망 1개(v1 또는 현재 버전), official 은 fin_cash_forecast_ms 행.
+ */
+export function compareOfficialForecast(
+  run: Pick<CashSimResult, 'daily' | 'asOf'>,
+  official: readonly { week: IsoDate; projectedClosingKrw: number }[],
+): OfficialComparisonRow[] {
+  const weeks = [...official].sort((a, b) => a.week.localeCompare(b.week));
+  return weeks.map((w, i) => {
+    const periodStart = i === 0 ? run.asOf : addDays(w.week, -6);
+    const periodEnd = w.week;
+    const inPeriod = run.daily.filter((d) => d.date >= periodStart && d.date <= periodEnd);
+    const onOrBefore = run.daily.filter((d) => d.date <= w.week).at(-1);
+    const recalculated = onOrBefore?.closingKrw ?? run.daily[0]?.closingKrw ?? 0;
+    const belowDays = inPeriod.filter((d) => d.closingKrw < COVENANT_MIN_KRW).length;
+    const off = w.projectedClosingKrw as number;
+    return { week: w.week, periodStart, periodEnd, official: off, recalculated, diff: recalculated - off, belowDays, belowThreshold: belowDays > 0 };
+  });
+}
+
+/** 차이 절댓값 최대 주 (동점은 이른 주) */
+export function largestOfficialGap(rows: readonly OfficialComparisonRow[]): OfficialComparisonRow | null {
+  let best: OfficialComparisonRow | null = null;
+  for (const r of rows) if (!best || Math.abs(r.diff) > Math.abs(best.diff)) best = r;
+  return best;
+}

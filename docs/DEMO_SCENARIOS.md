@@ -3,6 +3,10 @@
 > 작성 2026-11-12 · 기획(aoura-planner) · 대상 · 상태 · 규칙 ID 는 [ONTOLOGY.md](ONTOLOGY.md), 화면은 [SCREEN_SPEC.md](SCREEN_SPEC.md).
 > 모든 숫자는 원본에서 코드로 다시 계산해 확인했다(2026-11-12, Python 검산). 계산식과 가정 ID 를 함께 적었다. 백엔드 단위 · 시나리오 테스트의 **골든 값**으로 쓴다(부록 A).
 > 시연 시점은 가상 기준시각 `simNow`(A-21). 모의 회신 · 모의 사건은 모두 `MOCK` 라벨.
+> **2026-11-14 갱신**: 1단계 구현(커밋 `be79a9d`) 대조 반영 — AC-2-03 · AC-3-03 을 의미 기준으로, 혼합 회신 outcome, ESCALATE_NOTICE_UNCONFIRMED, 작업 기한 A-27~A-29, 보충요청 DRAFT→REJECTED(A-30), ④ 재고 게이트 플래그 시점, AC-2-09(대기 중 건 권한 상향) 추가. 목록은 [ONTOLOGY 7절](ONTOLOGY.md#7-1단계-구현-반영--후속-작업-2026-11-14).
+> **2026-11-14 갱신(2)**: S-10 공식 전망 대 재전망 대조(사용자 결정) — S2-2 · AC-2-10 · 부록 A-4-1 비교표 기대값(원본 재계산, 주간 대응 기준 A-32).
+> **2026-11-14 갱신(3)**: 백엔드 2단계(API · DB) 반영 — 완료 조건 점검표(0-2), AC 검증 상태(0-3), ① S1-6 에 승인조건 문서화 · 그룹 보고 작업 완료 추가(API 실행에서 두 작업이 7/18 에 OVERDUE 로 바뀐 것 확인 → 정상 흐름 보완, BE-16), AC-1-10 보강, ③ · ④ 에 외부 회신 거절 · 정보 제공 효과(A-33 · A-34).
+> **승인요청 번호(`APR-00n`)는 해당 프리셋에서의 예시**다. 번호는 생성 순서 일련번호라 프리셋마다 달라질 수 있으므로 테스트 · 모의 회신은 의미(대상 · requiredRole · version · supersedesId)로 요청을 찾는다(ONTOLOGY 1-3 ApprovalRequest).
 
 ## 0. 시연 구성 한눈에
 
@@ -24,6 +28,29 @@
 | 3 나만의 확장 ≥1 | **E1 수령확인**(S1-7) | — | **E1 재통보 · 미확인**(③-A) | **E2 재고 게이트** | 계약 상세 「통보」 탭, 기안 상세 재고 열 |
 | 4 다른 부서 영향 ≥1 | **D1 재무 covenant → 승인 주체 변경** | **D1 재전망 → 재승인** | — | **D2 SCM/Corevia → 집행일 조정 · 보충 발주 경로** | 승인요청 `routingReasons`, 작업 목록 |
 | 5 원본과 가정 구분 | 모든 수치 배지 · 공헌이익 공식값(A05)과 1.4 참고값 구분 | 모의 사건 배지 · 재전망 가정 | 모의 회신 배지 | 가정 A-16~A-19 배지 | 모든 화면, `/data` |
+
+### 0-2. 완료 조건 점검 (2026-11-14, 2단계 백엔드 기준)
+
+판정: **충족** = 화면 · 배포까지 확인 / **일부** = 도메인 · API 테스트로는 확인, 화면 연결 · 배포 등이 남음 / **미충족** = 동작 증거 없음. 근거는 백엔드 2단계 보고(테스트 212 통과, 로컬 Postgres 에서 ①을 API 로 실행)와 기획의 코드 대조. 기획이 직접 실행한 것은 `tsc --noEmit` 뿐이다(프론트 진행 중이라 오류 — `npm run check` 미통과).
+
+| # | 완료 조건 | 판정 | 근거 | 남은 것 |
+|---|---|---|---|---|
+| 1 | 실제로 돌아가는 시스템 | **일부** | API 만으로 ① 전 구간(접수 → 확인 → 판단안 → 승인요청 → 모의 회신 → 작업 → 수령확인 → 시점 이동 → 다음 판단)이 로컬 Postgres(`audit_log` 87행)와 메모리 저장소 테스트에서 돈다. 권한 위반 422 · 상태 불변 확인 | 화면 → API 연결(FE-01~06), `npm run check` 통과, docker 배포(BE-14 — CSV 포함 방식 사용자 결정 대기), 실시간 AI 경로 미확인(BE-15, 크레딧) |
+| 2 | 세 가지 상황 시연 | **일부** | ①②③④ 수용 기준이 도메인 시나리오 테스트로, ①②③④ 핵심이 API 테스트로 통과(0-3). 프리셋 10개 서버 재생 · 점검 API 있음 | 화면에서 프리셋 → 행동 → 결과 확인(S-13 · FE), ① 정상 흐름 OVERDUE 정리(BE-16) |
+| 3 | 나만의 확장 ≥1 | **일부** (로직 충족) | E1 수령확인: AC-3-04 · 3-05(재통보 1회, `NOTICE_UNCONFIRMED` + 에스컬레이션, 자동 갱신 아님). E2 재고 게이트: AC-4-03(게이트를 끄면 권고가 승인으로 바뀜 — 판단을 실제로 바꿈), SCM 회신 3분기(A-30 · A-34) | 화면 표시(FE-03 라벨, FE-04 종결 문구 3종) |
+| 4 | 다른 부서 영향 ≥1 | **일부** (로직 충족) | D1: 회수 지연 → 재전망 v2 → PLAN-004 · 024 권한자 상향 · 재승인(AC-2-01~03, API). D2: 보충 지급일이 하회 구간 → 그룹 CEO/이사회 → 거절 → PLAN-011 부결 권고(AC-4-05 · 4-06, API) | S-04 권한자 열 변경 · S-10 v1/v2 음영 화면(UI-08) |
+| 5 | 원본과 가정 구분 | **일부** | 모든 API 값이 `Sourced`(출처 라벨 · 스케일), 판단안 숫자 출처 검증(`provenance`), 공식 전망 · 예상 GMV 는 CLAIM 이고 facts 에 들어가면 위반, 모의 회신 · 사건 MOCK, 원본 17 파일 읽기만 · DB `raw_rows` 에 원문 보존 | 가정 목록 사본에 A-32~A-34 없음(BE-11), 모의로 채운 공백을 "해소"로 돌려줌(BE-12), 화면 배지 확인(UI-01 · S-12) |
+
+**지금 제출 가능하지 않다** — 조건 1 의 화면 · 배포, `npm run check` 통과가 먼저다.
+
+### 0-3. 수용 기준 검증 상태 (2026-11-14)
+
+| 상황 | API 테스트로 검증 (`tests/api/`) | 도메인 테스트로만 검증 (`tests/scenarios/` · `tests/unit/`) | 화면 확인 |
+|---|---|---|---|
+| ① | AC-1-01 · 05 · 06 · 07 · 08 · 09 · 10 · 11 (`scenario1-api` — 로컬 Postgres 수동 실행도 같은 흐름) | AC-1-02 · 03 · 03b · 04 | 미확인 (FE 2단계) |
+| ② | AC-2-01 · 02 · 03 · 04 · 05 · 06 · 10 (`presets-errors` ②) | AC-2-07 · 08 · 09 | 미확인 |
+| ③ | AC-3-02 · 06 · 07 · 08 (`presets-errors` ③ · 데이터 출처), AC-3-01 은 프리셋 `S3_1` 재생으로 | AC-3-03 · 04 · 05 | 미확인 |
+| ④ | AC-4-04(대상 아닌 건 422) · 05 · 06 의 ④-b(거절 → 부결 권고) | AC-4-01 · 02 · 03 · 06 의 ④-a · 07 | 미확인 |
 
 확장 · 부서 영향 정의:
 - **E1 (나만의 확장) 통보 수령확인 상태** — R-EXT-01. 원본 공백 "실제 통보 수령 증빙이 없다"(W02 5절)를 상태로 관리. 없으면: 발송만으로 "통보 완료"가 되어 기한 감시가 자동 갱신을 막았다고 판단 / 있으면: 수령 미확인 시 재통보 작업 · `NOTICE_UNCONFIRMED` 에스컬레이션으로 **처리가 달라진다**.
@@ -95,14 +122,19 @@
 ### S1-5 모의 회신 (7/10 14:00, `MOCK`)
 - APR-001 ← `GROUP_CEO_BOARD`: `APPROVED`, decision `RENEGOTIATE` → 계약 `NOTICE_PENDING`, 작업 `SEND_NOTICE`(계약 담당, 기한 7/16) · `DOCUMENT_CONDITIONS` 생성.
 - APR-002 ← `GROUP_CEO_BOARD`: `APPROVED`(권고안 승인 = 3건 REJECT) → PLAN-001~003 `REJECTED`.
-- APR-003 ← `MASIL_CEO`: PLAN-004 `APPROVE`, PLAN-005 `REJECT` → `APPROVED` / `REJECTED`, 작업 `REPORT_TO_GROUP` 생성.
+- APR-003 ← `MASIL_CEO`: `APPROVED`, 건별 PLAN-004 `APPROVE` · PLAN-005 `REJECT` → `APPROVED` / `REJECTED`, 작업 `REPORT_TO_GROUP` 생성(기한 7/17 = 원본 기한 당일, A-29).
+- 회신 유형: 승인과 부결이 섞인 회신 · 권고안(전부 부결 포함) 승인의 `outcome` 은 **`APPROVED`** 이고, 요청 상태도 `APPROVED` 다. 건의 상태는 건별 결정으로 정해진다(ONTOLOGY 1-3 ApprovalReply, A-24).
 - (권한 검증) APR-002 에 `MASIL_CEO` 로 회신 시도 → **422 "권한 없음"**, 상태 변화 없음.
 
 ### S1-6 후속 처리
 - 7/13 10:00 `SEND_NOTICE` 완료 → 계약 `NOTICE_SENT`, `Notice` 기록, 작업 `CONFIRM_RECEIPT`(기한 7/17).
+- 7/13 10:00 `DOCUMENT_CONDITIONS`(계약 담당, 기한 7/16) 완료 — 결과 메모 "조건변경 협의 요청 사항 문서화 (모의)". 수치 조건은 만들지 않는다(A-23).
 - 7/14 11:00 `COUNTERPARTY_REPLY`(AGENCY, 수령확인, MOCK) → `NoticeReceipt` 생성 → 계약 `NOTICE_ACKNOWLEDGED → NEGOTIATING` (**E1**).
+- 7/14 `REPORT_TO_GROUP`(Masil 대표, 기한 7/17 A-29) 완료 — 결과 메모 "PLAN-004 승인 · PLAN-005 부결 그룹 보고 (모의)".
+- **두 작업 완료를 정상 흐름에 넣는 이유** (2026-11-14, API 실행 결과 반영): 백엔드가 ①을 API 로 돌렸을 때 7/18 이동의 미리보기가 "지나가는 기한 4건 · 전이 7건"이었고, 그중 2건이 위 두 작업의 `OVERDUE` 였다. 기한 감시 동작은 맞지만 "정상" 시연에 밀린 작업이 남으면 판단 이후 처리가 끝나지 않은 것으로 보인다. 프리셋 `S1_6` 이후 재생에 두 작업 완료를 넣는다(BE-16). 완료하지 않고 넘어가면 OVERDUE 가 되는 것 자체는 유지(테스트).
 
 ### S1-7 다음 판단 반영 (시점 이동 7/18 00:00)
+- 시점 이동 미리보기(`GET /api/clock/preview`): 지나가는 기한 = 계약 통보 기한 7/17 · 기안 확정기한 7/17 (2건), 전이 5건. (S1-6 의 두 작업을 완료하지 않았다면 기한 4건 · 전이 7건 — 두 작업 `OVERDUE` 추가.)
 - 기한 감시: PLAN-004 `APPROVED → CONFIRMED`, PLAN-001 · 002 · 003 · 005 `REJECTED → CANCELLED`. 계약은 `NEGOTIATING` 이라 `AUTO_RENEWED` 로 가지 않음.
 - 대시보드: 7/17 기한 경고 사라짐. 계약 카드 "자동 갱신 차단됨(수령확인 7/14)".
 - 8/14 묶음 판단(ASM-003, 7/20 실행)의 배분 점검: 남은 기안(`CANCELLED` 제외) 120,081,310 기준 INF-001 요청 비중 **28.0% → 0%**. `기안 총액`(권한 판정용)은 180,803,272 그대로 유지(기안 자체 금액은 부결로 줄지 않음 — INTERPRETED).
@@ -118,7 +150,7 @@
 - **AC-1-07** When APR-002 에 `MASIL_CEO` 가 회신, Then 422 이고 어떤 상태도 바뀌지 않는다.
 - **AC-1-08** When S1-5 회신, Then 계약 `NOTICE_PENDING` + 작업 `SEND_NOTICE` · `DOCUMENT_CONDITIONS`, PLAN-004 `APPROVED`, 나머지 4건 `REJECTED`, 작업 `REPORT_TO_GROUP` 1건.
 - **AC-1-09** When 통보 발송 → 수령확인, Then 계약 `NOTICE_SENT → NOTICE_ACKNOWLEDGED → NEGOTIATING`.
-- **AC-1-10** When 시점 7/18 00:00, Then PLAN-004 `CONFIRMED`, 4건 `CANCELLED`, 계약은 `AUTO_RENEWED` 가 **아니다**, `AUTO_CONFIRMED` 건 0.
+- **AC-1-10** When 시점 7/18 00:00, Then PLAN-004 `CONFIRMED`, 4건 `CANCELLED`, 계약은 `AUTO_RENEWED` 가 **아니다**, `AUTO_CONFIRMED` 건 0. S1-6 의 작업을 모두 완료했다면 `OVERDUE` 작업 0(BE-16), 미리보기 `transitions` = 실제 이동 `transitions`(BE-07).
 - **AC-1-11** Then 8/14 묶음 배분 점검에서 INF-001 남은 요청 비중 0, 권한 판정용 기안 총액은 180,803,272.
 
 ## 3. ② 조건 변경 — 회수 지연으로 하회 구간이 늘어 승인 주체가 바뀜
@@ -135,11 +167,14 @@
 | 하회 구간 | 7/21 ~ 8/21 (24영업일) | **7/21 ~ 8/28 (29영업일)** | 8/24 잔액: v1 1,921,839,555 + 1,406,743,856 = 3,328,583,411 (≥30억) / v2 1,921,839,555 (<30억, 회수가 8/31 로 밀림) |
 | 최저 잔액 | 1,921,839,555 (7/27) | 동일 | 최저점은 7/21 발주대금 이후 |
 | 재무팀 공식 전망 [CLAIM] | 하회 없음 (주간 최저 5,468,884,369) | 변화 없음(재무팀 파일은 고정) | 차이 원인 표시 |
+| S-10 비교표 (공식 전망 대 재전망, A-32) | 최대 차이 **주 08-17** −4,903,444,692 · 하회 주 07-27 ~ 08-24 (5주) | 최대 차이 **주 08-24** −5,186,238,877 · 하회 주 07-27 ~ 08-31 (6주) | 부록 A-4-1. 바뀐 행 = 주 08-24(재전망 종가 3,328,583,411 → 1,921,839,555, 하회 4 → 5영업일) · 08-31(하회 0 → 4영업일) |
+
+- 화면(S-10): 재전망 v1 점선 · v2 실선 위에 공식 전망 주간 종가 점(`주장` 배지)이 겹쳐 있고, 차트 아래 비교표가 v2 기준으로 다시 그려진다. 공식 전망은 대조용이라 S2-3 판단 · 권한 재판정 · 경고 문구에는 나오지 않는다(UI-03).
 
 ### S2-3 판단 (규칙 재실행 — AI 없이도 동일)
 | 건 | 집행일 | 상태 | 권한자 v1 → v2 | 처리 |
 |---|---|---|---|---|
-| **PLAN-004** (INF-003, 10,180,328) | 8/28 | `APPROVED` (Masil 대표, 7/10) | `MASIL_CEO` → **`GROUP_CEO_BOARD`** | 기한(7/17) 전 → `REAPPROVAL_REQUIRED`, APR-003 의 PLAN-004 승인은 효력 상실(이력 남김), 새 요청 APR-004 생성(내부 기한 7/16) |
+| **PLAN-004** (INF-003, 10,180,328) | 8/28 | `APPROVED` (Masil 대표, 7/10) | `MASIL_CEO` → **`GROUP_CEO_BOARD`** | 기한(7/17) 전 → `REAPPROVAL_REQUIRED`, APR-003 의 PLAN-004 승인은 효력 상실(이력 남김, APR-003 자체는 회신 상태 `APPROVED` 유지 — PLAN-005 부결은 유효), 같은 이벤트에서 새 요청 APR-004 생성(version 2, supersedes APR-003, 내부 기한 7/16) → PLAN-004 `PENDING_APPROVAL` |
 | PLAN-024 (INF-009, 2,476,699) | 8/24 | `VALIDATED` (미상신, 기한 9/11) | `MASIL_CEO` → **`GROUP_CEO_BOARD`** | 라우팅만 갱신, 화면에 "권한자 변경" 배지 |
 | PLAN-005 | 9/08 | `REJECTED` | 변화 없음 | — |
 | 그 외 23건 | | | 변화 없음 | — |
@@ -157,12 +192,14 @@
 ### ② 수용 기준
 - **AC-2-01** Given ① S1-5 상태, When `AR_COLLECTION_DELAYED(MAR-0004 → 2026-08-30)`, Then 재전망 v2 의 하회 구간 = [{start:'2026-07-21', end:'2026-08-28'}], 최저 = 1,921,839,555 @ 2026-07-27.
 - **AC-2-02** Then PLAN-004 · PLAN-024 의 requiredRole 이 `GROUP_CEO_BOARD`, 사유에 R-AUTH-03 과 재전망 v2 ID 가 기록되고, 다른 23건 라우팅은 v1 과 같다.
-- **AC-2-03** Then PLAN-004 상태 `REAPPROVAL_REQUIRED`, APR-004(requiredRole `GROUP_CEO_BOARD`) 생성, 이력에 `APPROVED→REAPPROVAL_REQUIRED` 와 이벤트 ID.
+- **AC-2-03** Then (최종 상태) PLAN-004 상태 `PENDING_APPROVAL`, `approvedByRole` 없음, PLAN-004 만 대상으로 하는 새 승인요청이 있다(requiredRole `GROUP_CEO_BOARD`, `supersedesId` = PLAN-004 의 이전 요청(APR-003), version = 이전 + 1 = 2 (BE-04 구현됨), 상태 `PENDING`, 내부 기한 7/16 23:59:59). (이력) PLAN-004 이력에 `APPROVED → REAPPROVAL_REQUIRED`(규칙 R-AUTH-06, 지연 이벤트 ID)와 `REAPPROVAL_REQUIRED → PENDING_APPROVAL` 이 이 순서로 있다. 이전 요청(APR-003)의 상태는 `APPROVED` 그대로, PLAN-005 는 `REJECTED` 그대로, PLAN-024 는 `VALIDATED`(라우팅만 갱신). 요청 번호는 검증하지 않는다.
 - **AC-2-04** When APR-004 에 `MASIL_CEO` 회신, Then 422.
 - **AC-2-05** When 조건부 승인 회신, Then PLAN-004 `CONDITIONALLY_APPROVED` + `RESCHEDULE_CAMPAIGN` 작업.
 - **AC-2-06** When 집행일 8/31 로 변경, Then 재상신 요청이 새로 생기지 않는다(권한 하향).
 - **AC-2-07** Given PLAN-004 `CONFIRMED`(7/18 이후), When 같은 지연 이벤트, Then 상태 불변 + `POST_DEADLINE_REPORT` 1건.
 - **AC-2-08** Then 기안 요청액이 재전망 유출에 들어가지 않는다(v1 · v2 모두 기안 승인/부결과 무관하게 같은 잔액 — R-CASH-04).
+- **AC-2-10** (S-10 대조, BE-10 · FE-06) Then `GET /api/analytics/cash?version=v2` 의 `officialComparison` 13행이 부록 A-4-1 v2 열과 같고(주 08-24: official 7,108,078,432 [CLAIM] · recalculated 1,921,839,555 [AGGREGATED] · diff −5,186,238,877 · belowDays 5 · 주 08-31: belowDays 4), `largestGap.week = '2026-08-24'`. `version=v1` 은 `largestGap.week = '2026-08-17'`. 권한 판정 · 하회 구간(AC-2-01) · 경고는 공식 전망 값과 무관하다(공식 전망 파일 값을 바꿔도 AC-2-01 · AC-2-02 결과 불변 — 단위 테스트).
+- **AC-2-09** (변형: 대기 중 건의 권한 상향, R-AUTH-06 `RESUBMIT_PENDING`) Given ①을 S1-4 까지 재생(APR-003 = PLAN-004 · 005 대기), When 7/10 같은 지연 이벤트, Then APR-003 `SUPERSEDED`, PLAN-004 는 `GROUP_CEO_BOARD` 새 요청 · PLAN-005 는 `MASIL_CEO` 새 요청(둘 다 version 2, supersedesId APR-003)에 걸리고 두 건 상태는 `PENDING_APPROVAL` 유지, 각 건 이력은 끊김 없이 이어진다(모든 행의 `fromStatus` = 직전 행 `toStatus` — BE-02). APR-003 에 `MASIL_CEO` 가 회신하면 409.
 
 ## 4. ③ 정보 부족 + 승인 거절 — 계약 반려 후 기한 전 재검토
 
@@ -171,22 +208,23 @@
 ### S3-1 거절 (7/10 14:00, MOCK)
 - APR-001 ← `GROUP_CEO_BOARD`: `REJECTED`, 사유 "성과 피 정산조건 미확인 — 조건변경안의 총 보수를 비교할 수 없음. 확인 후 재상신".
 - 상태: 계약 `PENDING_APPROVAL → REVIEW_BEFORE_DEADLINE` (BPMN '아니오' = 재검토, 미갱신 확정 아님).
-- 작업 생성: `INFO_REQUEST`(대상 AGENCY, 담당 계약 담당, 기한 7/13, 질문 "성과 피 산식 · 정산 주기") · `REVIEW_BEFORE_DEADLINE`(계약 담당, 기한 7/15) · `RESUBMIT`(계약 담당, 기한 7/15).
+- 작업 생성: `INFO_REQUEST`(대상 AGENCY, 담당 계약 담당, 기한 7/13 = min(7/10 + 3일, 7/17 − 2일) A-27, 질문 "성과 피 산식 · 정산 주기") · `REVIEW_BEFORE_DEADLINE`(계약 담당, 기한 7/15) · `RESUBMIT`(계약 담당, 기한 7/15).
 - 대시보드: 계약 기한 D-7 경고 + "반려 · 재검토 중" 배지. "이대로 7/17 이 지나면 자동 갱신(= 권한 미경유 체결)" 경고 문구.
 
 ### S3-2 정보 부족 회신 (7/13 16:00, MOCK)
 - `COUNTERPARTY_REPLY`(AGENCY): 결과 `INSUFFICIENT`, "성과 피 산식은 계약 원문 별첨이며 **7/24 이후** 제공 가능".
 - 작업 `INFO_REQUEST` → `DONE`(결과 INSUFFICIENT). G-02 는 미해결로 남음.
+- (참고 변형, 필수 시연 아님) 같은 자리에 에이전시가 「정보 제공」으로 회신하면 성과 피 조건이 회신 문구(`모의`)로 기록되고 다음 판단안의 사실이 그 문구로 바뀐다. 문구를 금액으로 바꾸지 않으므로 권한 판정은 여전히 "연 금액 하한 28억 → 그룹 CEO/이사회"(A-33). 원본 공백 G-02 는 S-12 에서 "모의 회신으로 보완 — 원본 공백 그대로"(BE-12).
 - 재판단 ASM-001 v2: "정보가 기한(7/17) 전에 오지 않음 → 성과 피를 모른 채 결정해야 함. 아무것도 안 하면 대안 A(자동 갱신)와 같은 결과. 통보(B 또는 C)만이 기한 후 선택지를 남긴다." 권고: **C 해지 통보**(만료 후 재협상 여지는 가정 — A-23) 또는 B. 두 대안의 차이 · 위험을 표로 제시.
 
 ### S3-3 분기 A — 재상신 승인 (정상 회복)
-- 7/14 `RESUBMIT` 완료 → APR-005(v2, supersedes APR-001) → 계약 `PENDING_APPROVAL`.
+- 7/14 `RESUBMIT` 완료 → 새 승인요청(v2, supersedes APR-001, requiredRole `GROUP_CEO_BOARD`) → 계약 `PENDING_APPROVAL`. 번호는 ③ 프리셋(① S1-4 까지 재생)에서 `APR-004` 다(이전 판의 `APR-005` 는 ②의 요청 번호를 이어 센 잘못된 예시) — 번호가 아니라 의미로 찾는다. APR-001 은 이미 `REJECTED` 라 상태를 그대로 두고 링크만.
 - 7/15 ← `GROUP_CEO_BOARD`: `APPROVED`, decision `TERMINATE` → `NOTICE_PENDING` → 7/16 10:00 `SEND_NOTICE` 완료 → `NOTICE_SENT`.
 - 7/17 09:00 시점 이동 → 수령 미확인 → 작업 `RENOTIFY` 생성 (**E1**). 7/17 15:00 수령확인(MOCK) → `NOTICE_ACKNOWLEDGED → TERMINATING`.
-- 변형 A': 7/17 내내 수령 미확인 → 7/18 00:00 `NOTICE_UNCONFIRMED` + 에스컬레이션 작업(그룹 CEO/이사회 · 계약 담당). **자동 갱신으로 처리하지도, 통보 완료로 처리하지도 않는다**(A-14).
+- 변형 A': 7/17 내내 수령 미확인 → 7/18 00:00 `NOTICE_UNCONFIRMED` + 에스컬레이션 작업 `ESCALATE_NOTICE_UNCONFIRMED` 2건(그룹 CEO/이사회 · 계약 담당, 기한 7/24 A-28). **자동 갱신으로 처리하지도, 통보 완료로 처리하지도 않는다**(A-14).
 
 ### S3-4 분기 B — 미결로 기한 경과 (거절 후 방치)
-- 재상신 없이 시점 7/18 00:00 → 계약 `REVIEW_BEFORE_DEADLINE → AUTO_RENEWED`, APR-001 계열 미결 요청 `EXPIRED`, 작업 `INCIDENT_AUTO_RENEWAL`(그룹 CEO/이사회, 기한 7/24), 이력 사유 "미통보 자동 갱신 = 권한 미경유 체결 (정책)".
+- 재상신 없이 시점 7/18 00:00 → 계약 `REVIEW_BEFORE_DEADLINE → AUTO_RENEWED`, APR-001 계열 미결 요청 `EXPIRED`, 작업 `INCIDENT_AUTO_RENEWAL`(그룹 CEO/이사회, 기한 7/24 = 통보 기한 + 7일 A-28), 이력 사유 "미통보 자동 갱신 = 권한 미경유 체결 (정책)".
 - APR-002 가 미회신이었다면 PLAN-001~003 도 `AUTO_CONFIRMED` + `POST_DEADLINE_REPORT`.
 - **다음 판단 반영**: 이후 INF-001 관련 판단(예: 해지 검토 ASM)은 계약 상태를 읽어
   - "2026-09-01 ~ 2027-08-31 고정 피 2,800,000,000 확정 [ORIGINAL 조건 · 상태 AUTO_RENEWED]"
@@ -196,9 +234,9 @@
 ### ③ 수용 기준
 - **AC-3-01** Given APR-001 대기, When `GROUP_CEO_BOARD` 가 REJECTED, Then 계약 `REVIEW_BEFORE_DEADLINE`, 작업 `INFO_REQUEST` · `REVIEW_BEFORE_DEADLINE` · `RESUBMIT` 각 1건, 계약 상태가 `TERMINATED`/미갱신 확정으로 표시되지 **않는다**.
 - **AC-3-02** When 에이전시 `INSUFFICIENT` 회신, Then G-02 가 판단안 v2 `unknowns` 에 남고, 판단안 v2 에 "기한 전 정보 미도착" 사실과 대안 A 의 결과(자동 갱신)가 포함된다.
-- **AC-3-03** When 재상신, Then APR-005.version = 2, `supersedesId` = APR-001, APR-001 상태 `SUPERSEDED`(이미 REJECTED 면 그대로 두고 링크만).
+- **AC-3-03** When 재상신(`RESUBMIT` 작업 완료), Then 계약 대상 새 승인요청이 하나 생긴다: version = 2, `supersedesId` = APR-001(첫 계약 요청), requiredRole `GROUP_CEO_BOARD`, 상태 `PENDING`. APR-001 은 이미 `REJECTED` 라 상태를 그대로 둔다(`PENDING` 이었다면 `SUPERSEDED`). 계약 상태 `PENDING_APPROVAL`. **요청 번호(APR-004/APR-005)는 검증하지 않는다** — 프리셋에 따라 달라진다.
 - **AC-3-04** Given `NOTICE_SENT`(7/16) 수령 미확인, When 시점 7/17 09:00, Then `RENOTIFY` 작업 1건(중복 생성 안 함).
-- **AC-3-05** Given `NOTICE_SENT` 수령 미확인, When 시점 7/18 00:00, Then `NOTICE_UNCONFIRMED`, `AUTO_RENEWED` 아님.
+- **AC-3-05** Given `NOTICE_SENT` 수령 미확인, When 시점 7/18 00:00, Then `NOTICE_UNCONFIRMED`, `AUTO_RENEWED` 아님, 작업 `ESCALATE_NOTICE_UNCONFIRMED` 2건(ownerRole `GROUP_CEO_BOARD` · `CONTRACT_OFFICER`, 기한 7/24), `INCIDENT_AUTO_RENEWAL` 0건(BE-01), `RENOTIFY` 는 1건만.
 - **AC-3-06** Given `REVIEW_BEFORE_DEADLINE`, When 시점 7/18 00:00, Then `AUTO_RENEWED`, 작업 `INCIDENT_AUTO_RENEWAL`, 이력 actorKind `SYSTEM`.
 - **AC-3-07** Then `penalty('2026-09-30')` = 1,283,333,333, `penalty('2026-12-31')` = 933,333,333 (원 단위 내림).
 - **AC-3-08** 모의 회신 데이터셋에 `REJECTED` · `INFO_REQUESTED`/`INSUFFICIENT` 회신이 각각 1건 이상 있다(PROBLEM 5절 원칙 3).
@@ -206,6 +244,8 @@
 ## 5. ④ 확장 · 부서 영향 (필수 시연) — 더마 확대 건(PLAN-011)의 재고 게이트
 
 **프리셋**: ① 완료 후 `simNow` 2026-07-20 09:00. 8/14 마감 묶음 판단 중 PLAN-011.
+
+> **재고 게이트 플래그는 7/1 부터 있다** (2026-11-14 확인 · 결정). 게이트 조건(R-INV-03)은 시점과 무관해 PLAN-011 은 7/1 기안 접수 · 확인 때 이미 `INVENTORY_BELOW_MIN` · `STOCKOUT_BEFORE_SETTLEMENT` 가 붙는다(7/1 기준 지금 발주 시 도착 = 7/1 + 12주 = 9/23 > 8/31). ①의 S1-2 「재고 게이트 해당 없음」은 **7/17 마감 5건**에 대한 결과이고, S-01 · S-04 경고 목록에는 7/1 부터 PLAN-011 재고 경고가 보이는 것이 맞다. ④는 이 경고를 **8/14 마감 묶음을 판단하는 7/20 에 처리**하는 장면이다(7/20 에 다시 확인하면 도착 예상만 10/12 로 늦어지고 결론은 같다).
 
 ### S4-1 확인
 | 항목 | 값 | 라벨 |
@@ -215,28 +255,31 @@
 | 성과 등급 | `CP_POSITIVE` (공식 cp +4,734,993) · 참고 플래그 `CP_REF_SIGN_DIFFERS` (1.4 참고값 −6,703,541, 판단에 쓰지 않음) | AGGREGATED · SAMPLE |
 | 주력 SKU (≥20%) | SKU-1004 27% · 1001 26% · 1002 25% · 1003 22% | AGGREGATED + A-16 |
 | 커버 · 품절 예상 | 1001 2.92주 → 7/20 · 1002 2.92주 → 7/20 · 1004 2.21주 → 7/15 (**모두 min 4주 미만**) · 1003 4.29주 → 7/30 | R-INV-01/02 |
-| 지금 발주 시 도착 | 7/20 + 12주 = 10/12 > 8/31 | R-INV-03 |
+| 지금 발주 시 도착 | 7/20 + 12주 = 10/12 > 8/31 (7/1 확인 때는 9/23 — `simNow` 에 따라 바뀌는 계산값) | R-INV-03 |
 | 기발주 도착 | SPO-0001~0004 (6/22~6/26 발주) + 12주 = 9/14 ~ 9/18 | AGGREGATED + A-20 |
 | 플래그 | `INVENTORY_BELOW_MIN`, `STOCKOUT_BEFORE_SETTLEMENT`, `CP_POSITIVE`, (참고) `CP_REF_SIGN_DIFFERS` | — |
 
 ### S4-2 판단
 - 게이트 결과: 성과 등급은 `CP_POSITIVE`(승인 가능)지만 **재고 게이트가 우선해 `APPROVE` 불가** — E2 확장이 판단을 실제로 바꾸는 지점(게이트가 없으면 이 건은 승인 권고). 대안 (a) 조건부 승인 — 집행일을 기발주 입고(9/18) 이후로 조정 (b) 부결 (c) 그대로 승인(품절 중 집행 — **선택지로 표시하되 게이트 위반 표시**).
 - 보충 제안(R-INV-04, A-17 · A-18): SKU-1001 target 47,463 − 23,123 − 15,821 = 8,519 → **24,000**(MOQ) · SKU-1002 43,332 − 21,111 − 14,444 = 7,777 → **24,000** · SKU-1004 38,994 − 14,359 − 12,998 = 11,637 → **20,000**. 단가 21,840 (기발주 단가) → 524,160,000 · 524,160,000 · 436,800,000 = **1,485,120,000** [AGGREGATED · ASSUMPTION, FULL].
-- 열린 질문 G-08: "기발주 SPO-0001~0004 가 `in_transit_qty` 에 포함됐는가? in_transit 입고일은?" → 보충요청 `DRAFT` + 작업 `REPLENISHMENT_REVIEW`(SCM) + `INFO_REQUEST`(SCM).
-- 보충 발주 지급일(A-19) = 7/20 + 25일 = **8/14** → 하회 구간(7/21~8/21) 안 → 보충요청 requiredRole = **`GROUP_CEO_BOARD`** (평시 SCM, R-AUTH-04 · R-AUTH-03). 재전망 "추가 유출" 시나리오: 8/14 잔액 1,921,839,555 − 524,160,000 = 1,397,679,555 (SKU-1001 1건만 넣었을 때, 원본 전망분과 분리 표시).
+- 열린 질문 G-08: "기발주 SPO-0001~0004 가 `in_transit_qty` 에 포함됐는가? in_transit 입고일은?" → 보충요청 `DRAFT` + 작업 `REPLENISHMENT_REVIEW`(SCM) + `INFO_REQUEST`(SCM), 두 작업 기한 7/23 = min(7/20 + 3일, 8/14 − 2일) (A-27, BE-03).
+- 보충 제안은 PLAN-011 주력 SKU 중 **안전재고 min 미달 SKU(1001 · 1002 · 1004)만** 대상이다. SKU-1003 은 커버 4.286주 ≥ 4주라 R-INV-04 식으로는 5,885.5 > 0 이 나와도 제안하지 않는다(R-INV-04 적용 범위).
+- 보충 발주 지급일(A-19) = 7/20 + 25일 = **8/14** → 하회 구간(7/21~8/21) 안 → 보충요청 requiredRole = **`GROUP_CEO_BOARD`** (평시 SCM, R-AUTH-04 · R-AUTH-03). 재전망 "추가 유출" 시나리오(S-10 의 **선택** 기능 — SCREEN_SPEC 5-1. 없어도 ④ 시연은 승인요청 `routingReasons` 의 R-AUTH-03 으로 성립): 8/14 잔액 1,921,839,555 − 524,160,000 = 1,397,679,555 (SKU-1001 1건만 넣었을 때, 원본 전망분과 분리 표시).
 
 ### S4-3 SCM 회신 분기 (MOCK)
-- **④-a** SCM: "SPO-0001~0004 는 in_transit 에 미포함, 9/14~9/18 입고 예정. 추가 발주 불필요. 9/14 전 입고 불가(Corevia F1 포화)" → 보충요청 `REJECTED`(사유: 불필요), PLAN-011 권고 확정 = (a) 조건부 승인(집행일 9/21) → APR(→`MASIL_CEO`) 회신 `APPROVED_WITH_CONDITIONS` → `CONDITIONALLY_APPROVED` + `RESCHEDULE_CAMPAIGN`. 집행일 9/21 은 하회 구간 밖이라 권한자 변화 없음.
+- **④-a** SCM: "SPO-0001~0004 는 in_transit 에 미포함, 9/14~9/18 입고 예정. 추가 발주 불필요. 9/14 전 입고 불가(Corevia F1 포화)" → 보충요청 `DRAFT → REJECTED`(사유: 불필요 — SCM 검토 결과 종결이며 **승인 거절이 아니다**, A-30), PLAN-011 `supplyOutlook = INBOUND_CONFIRMED`(입고 예정 9/18), PLAN-011 권고 확정 = (a) 조건부 승인(집행일 9/21) → APR(→`MASIL_CEO`) 회신 `APPROVED_WITH_CONDITIONS` → `CONDITIONALLY_APPROVED` + `RESCHEDULE_CAMPAIGN`. 집행일 9/21 은 하회 구간 밖이라 권한자 변화 없음.
 - **④-b** SCM: "SPO 는 in_transit 에 포함됨, 추가 발주 필요" → 보충요청 `SUBMITTED` → requiredRole `GROUP_CEO_BOARD`(지급 8/14 구간 안) → 그룹 CEO/이사회 `REJECTED`(MOCK: "하회 구간 신규 현금 약정 불가, 9월 지급 조건으로 재협의") → 보충 불가 → PLAN-011 권고가 (b) 부결로 바뀜.
+- **④-c (보강, 필수 시연 아님)** SCM: 「거절 — 보충 불가」(MOCK, 예 "Corevia F1 포화로 9월 전 추가 생산 불가") → 보충요청 3건 `DRAFT → REJECTED`(사유 '보충 불가', 승인 절차 없음 — A-34, 승인 거절 아님), PLAN-011 `supplyOutlook = NO_SUPPLY` → 권고 (b) 부결. ④-b 와 결과는 같고, 경로만 다르다(권한자 거절이 아니라 SCM 검토 종결). 화면 문구 "SCM 검토: 보충 불가로 종결 (승인 거절 아님)".
+- SCM 「정보 부족」이면 SCM 정보 요청 작업만 닫히고 초안 · 보충 검토 작업은 남는다(G-08 미해결) — 기한 7/23 이 지나면 OVERDUE.
 - "Corevia F1 포화(가동률 87%)" 는 `Business_Process_Map.md` 1.2 [ORIGINAL] — SCM 회신 문구가 이를 인용.
 
 ### ④ 수용 기준
 - **AC-4-01** Given 시드 재고, Then `coverWeeks(SKU-1001)` = 2.923(±0.001), `SKU-1004` = 2.209, `SKU-3002` = 17.827, 원본 `stock_cover_weeks` 와 소수 1자리 일치(14 SKU 모두).
-- **AC-4-02** Then PLAN-011 플래그에 `INVENTORY_BELOW_MIN` · `STOCKOUT_BEFORE_SETTLEMENT` 가 있고, PLAN-001~010 · 012~025 에는 `INVENTORY_BELOW_MIN` 이 없다.
+- **AC-4-02** Then PLAN-011 플래그에 `INVENTORY_BELOW_MIN` · `STOCKOUT_BEFORE_SETTLEMENT` 가 있고, PLAN-001~010 · 012~025 에는 `INVENTORY_BELOW_MIN` 이 없다. 7/1 기안 접수 직후(시드 시점)에도 같다.
 - **AC-4-03** Then PLAN-011 성과 등급은 `CP_POSITIVE` 인데 판단안 권고가 `APPROVE` 가 아니다(재고 게이트 우선). 같은 입력에서 재고 게이트를 끄면(테스트 전용) 권고가 `APPROVE` 가 된다 — 확장의 효과 확인.
-- **AC-4-04** Then 보충 제안 finalQty = {1001: 24000, 1002: 24000, 1004: 20000}, 1003 은 제안 없음(min 이상).
+- **AC-4-04** Then PLAN-011 보충 제안 finalQty = {1001: 24000, 1002: 24000, 1004: 20000}, 1003 은 제안 없음(min 이상 — 기안 건 보충 제안은 min 미달 SKU 만, R-INV-04 적용 범위). `suggestOrder` 식 자체는 R-INV-04 그대로다(1003 에 직접 적용하면 20,000 이 나오지만 제안 대상이 아님).
 - **AC-4-05** Given 지급일 8/14, Then 보충요청 requiredRole = `GROUP_CEO_BOARD`, 지급일이 8/24 면 `SCM`.
-- **AC-4-06** When ④-a 회신, Then PLAN-011 `CONDITIONALLY_APPROVED` + `RESCHEDULE_CAMPAIGN`. When ④-b 거절, Then PLAN-011 권고가 REJECT 로 바뀌고 판단안 버전이 올라간다.
+- **AC-4-06** When ④-a 회신, Then 보충요청 3건 `DRAFT → REJECTED`(actorRole `SCM`, 사유 '불필요'), PLAN-011 `CONDITIONALLY_APPROVED` + `RESCHEDULE_CAMPAIGN`. When ④-b 거절, Then PLAN-011 권고가 REJECT 로 바뀌고 판단안 버전이 올라간다.
 - **AC-4-07** Then 표본 주문 수량 · 금액이 재고 수량 · 발주 금액 계산에 쓰이지 않는다(R-SCALE-01, 타입 테스트).
 
 ## 6. 미해결 지점 (W02_TASK 5절 연결)
@@ -341,3 +384,29 @@ GCB = `GROUP_CEO_BOARD`, MC = `MASIL_CEO` + 그룹 보고. 연도는 모두 2026
 
 - 하회 구간: v1 07-21 ~ 08-21 · v2 07-21 ~ 08-28. 민감도(연체 AR 제외 · 연체 AP 7/1 지급): 07-21 ~ 08-28, 최저 1,467,664,440.
 - 재무팀 공식 전망 [CLAIM] 주간 projected_closing 최저 5,468,884,369 (주 07-06) — 7/21 발주대금 유출이 반영되지 않은 것으로 보인다(원인 확정은 미확인).
+
+### A-4-1. 공식 전망 대 재전망 비교표 (S-10, FULL, A-08 · A-09 · A-32) — 2026-11-14 원본 재계산
+- **대응 기준(A-32)**: `week` 컬럼 정의는 원본(data_dictionary · calculation_definitions)에 없다 — **미확인**. 원본에서 확인한 사실: (1) `week` 13개가 모두 월요일, `forecast_date` = 2026-06-30. (2) 첫 행 `projected_closing` 5,468,884,369 = 6/30 자금일보 종가 5,148,063,540 + 1,729,945,389 − 1,409,124,560 이고, 13행 모두 직전 행 종가 + 유입 − 유출 = 종가로 이어진다(집계 확인). → 6/30 종가에서 빈틈 없이 이어지려면 첫 주가 7/1 부터여야 하므로 `week` = **그 월요일에 끝나는 기간(직전 화 ~ 해당 월, 첫 주 7/1 ~ 7/6)** 으로 해석한다. 공식 전망 주간 유입 · 유출은 어느 해석(월~일 / 화~월)으로 묶은 원본 스케줄과도 맞지 않아(공식 유입은 매주 14~19억, 원본 스케줄은 9/6 이후 0) 흐름 대조로는 해석을 검증할 수 없었다.
+- **재전망 해당 주 종가** = 재전망의 `week` 날짜(월요일, 영업일) 종가. **차이** = 재전망 − 공식(음수 = 재전망이 낮음). **하회** = 대응 기간 영업일 중 종가 < 3,000,000,000 인 날 수.
+- 공식 전망 값은 **CLAIM**, 나머지는 **AGGREGATED**. 둘 다 풀스케일 현금 잔액이라 같은 표 · 축에 둔다(표본 금액 없음).
+
+| 주(week) | 대응 기간 | 공식 전망 종가 [CLAIM] | v1 재전망 종가 | v1 차이 | v1 하회(영업일) | v2 재전망 종가 | v2 차이 | v2 하회(영업일) |
+|---|---|---|---|---|---|---|---|---|
+| 07-06 | 07-01 ~ 07-06 | 5,468,884,369 | 5,910,593,790 | +441,709,421 | 없음 | 동일 | 동일 | 없음 |
+| 07-13 | 07-07 ~ 07-13 | 5,881,606,616 | 5,701,797,218 | −179,809,398 | 없음 | 동일 | 동일 | 없음 |
+| 07-20 | 07-14 ~ 07-20 | 6,091,722,355 | 5,941,509,959 | −150,212,396 | 없음 | 동일 | 동일 | 없음 |
+| 07-27 | 07-21 ~ 07-27 | 6,136,050,378 | 1,921,839,555 | −4,214,210,823 | 5 | 동일 | 동일 | 5 |
+| 08-03 | 07-28 ~ 08-03 | 6,229,754,096 | 1,921,839,555 | −4,307,914,541 | 5 | 동일 | 동일 | 5 |
+| 08-10 | 08-04 ~ 08-10 | 6,636,836,205 | 1,921,839,555 | −4,714,996,650 | 5 | 동일 | 동일 | 5 |
+| 08-17 | 08-11 ~ 08-17 | 6,825,284,247 | 1,921,839,555 | **−4,903,444,692 (v1 최대)** | 5 | 동일 | 동일 | 5 |
+| 08-24 | 08-18 ~ 08-24 | 7,108,078,432 | 3,328,583,411 | −3,779,495,021 | 4 | **1,921,839,555** | **−5,186,238,877 (v2 최대)** | **5** |
+| 08-31 | 08-25 ~ 08-31 | 7,501,099,433 | 4,920,098,644 | −2,581,000,789 | 없음 | 4,920,098,644 | −2,581,000,789 | **4** |
+| 09-07 | 09-01 ~ 09-07 | 7,644,362,414 | 6,323,145,302 | −1,321,217,112 | 없음 | 동일 | 동일 | 없음 |
+| 09-14 | 09-08 ~ 09-14 | 7,501,108,694 | 6,323,145,302 | −1,177,963,392 | 없음 | 동일 | 동일 | 없음 |
+| 09-21 | 09-15 ~ 09-21 | 7,930,058,460 | 6,323,145,302 | −1,606,913,158 | 없음 | 동일 | 동일 | 없음 |
+| 09-28 | 09-22 ~ 09-28 | 8,201,637,153 | 6,323,145,302 | −1,878,491,851 | 없음 | 동일 | 동일 | 없음 |
+
+- 하회 주: v1 = 07-27 ~ 08-24 (4주 × 5영업일 + 4영업일 = 24영업일, A-4 하회 구간 7/21 ~ 8/21 과 일치) · v2 = 07-27 ~ 08-31 (5주 × 5영업일 + 4영업일 = 29영업일, 7/21 ~ 8/28 과 일치).
+- **최대 차이 원인 메모** [INTERPRETED, 원인 미확인]: 7/21 기발주 14건 대금 3,749,760,000 이 공식 전망에 없는 것으로 보인다(7/21 이 든 주 07-27 공식 유출 1,538,636,693, 13주 공식 유출이 모두 13억~17억대). v1 최대 차이 4,903,444,692 중 3,749,760,000 을 뺀 1,153,684,692 는 **미확인**. v2 에서 주 08-24 차이가 v1 보다 1,406,743,856 커진 것은 MAR-0004 회수 지연(8/23 → 8/30, MOCK 이벤트) 때문이다(집계).
+- 9월 차이: 재전망은 원본 스케줄만 쓰므로 9/6 이후 예정 현금흐름이 없고(재전망 종가 6,323,145,302 고정), 공식 전망은 매주 유입 · 유출이 있다 — 차이 원인 미확인.
+- 검산: 2026-11-14 Python 으로 원본 CSV(`fin_cash_forecast_ms` · `fin_ar_aging_ms` · `fin_ap_aging_ms` · `sc_purchase_orders_ms` · `fin_cash_daily_ms`)에서 재계산, A-4 의 7개 기준일 값과 일치 확인.

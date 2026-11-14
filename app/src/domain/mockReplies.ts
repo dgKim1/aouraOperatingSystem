@@ -1,9 +1,10 @@
 /**
  * 모의 회신 데이터셋 (MOCK, A-24) — 외부 승인 · 회신을 대체한다.
  * PROBLEM 5절 원칙 3 / CLAUDE.md 규칙 7: 유리한 회신만 두지 않는다 — 거절(REJECTED) · 정보 부족(INFO_REQUESTED · INSUFFICIENT) 포함.
- * 문구 · 날짜는 DEMO_SCENARIOS 시나리오 그대로.
+ * 문구 · 날짜는 DEMO_SCENARIOS 시나리오 그대로. 요청은 번호가 아니라 target(대상 종류 · 권한자 · 포함 건)으로 찾는다 (BE-05).
  */
-import type { CounterpartyReplyInput, ReplyInput, ScmReviewInput } from './workflow';
+import type { CounterpartyReplyInput } from './types';
+import type { ReplyInput, ScmReviewInput } from './workflow';
 
 type Mock<T> = T & { label: 'MOCK' };
 const m = <T extends object>(x: T): Mock<T> => ({ ...x, label: 'MOCK' as const });
@@ -11,10 +12,10 @@ const m = <T extends object>(x: T): Mock<T> => ({ ...x, label: 'MOCK' as const }
 export const MOCK_REPLIES = {
   /** ① S1-5 (7/10 14:00) */
   S1_5: [
-    m<ReplyInput>({ requestId: 'APR-001', respondentRole: 'GROUP_CEO_BOARD', outcome: 'APPROVED', decision: 'RENEGOTIATE', reason: '권고 B 조건변경 통보 승인 — 고정 피 비중 축소 · 성과 연동 강화 협의 요청 (모의)' }),
-    m<ReplyInput>({ requestId: 'APR-002', respondentRole: 'GROUP_CEO_BOARD', outcome: 'APPROVED', reason: '권고안 승인 — PLAN-001~003 부결 (모의)' }),
+    m<ReplyInput>({ target: { subjectType: 'CONTRACT' }, respondentRole: 'GROUP_CEO_BOARD', outcome: 'APPROVED', decision: 'RENEGOTIATE', reason: '권고 B 조건변경 통보 승인 — 고정 피 비중 축소 · 성과 연동 강화 협의 요청 (모의)' }),
+    m<ReplyInput>({ target: { subjectType: 'EXPANSION_LINES', requiredRole: 'GROUP_CEO_BOARD', includes: ['PLAN-001'] }, respondentRole: 'GROUP_CEO_BOARD', outcome: 'APPROVED', reason: '권고안 승인 — PLAN-001~003 부결 (모의)' }),
     m<ReplyInput>({
-      requestId: 'APR-003',
+      target: { subjectType: 'EXPANSION_LINES', requiredRole: 'MASIL_CEO', includes: ['PLAN-004'] },
       respondentRole: 'MASIL_CEO',
       outcome: 'APPROVED',
       itemDecisions: [
@@ -26,7 +27,7 @@ export const MOCK_REPLIES = {
   ],
   /** ② S2-4 (7/15 15:00) 조건부 승인 */
   S2_4: m<ReplyInput>({
-    requestId: 'APR-004',
+    target: { subjectType: 'EXPANSION_LINES', requiredRole: 'GROUP_CEO_BOARD', includes: ['PLAN-004'] },
     respondentRole: 'GROUP_CEO_BOARD',
     outcome: 'APPROVED_WITH_CONDITIONS',
     itemDecisions: [{ itemId: 'PLAN-004', decision: 'CONDITIONAL', condition: '집행일 2026-08-31 이후로 조정' }],
@@ -34,7 +35,7 @@ export const MOCK_REPLIES = {
   }),
   /** ③ S3-1 (7/10 14:00) 거절 */
   S3_1_REJECT: m<ReplyInput>({
-    requestId: 'APR-001',
+    target: { subjectType: 'CONTRACT' },
     respondentRole: 'GROUP_CEO_BOARD',
     outcome: 'REJECTED',
     reason: '성과 피 정산조건 미확인 — 조건변경안의 총 보수를 비교할 수 없음. 확인 후 재상신 (모의)',
@@ -42,7 +43,7 @@ export const MOCK_REPLIES = {
   }),
   /** ③ 변형: 정보 요청 회신 */
   S3_ALT_INFO_REQUESTED: m<ReplyInput>({
-    requestId: 'APR-001',
+    target: { subjectType: 'CONTRACT' },
     respondentRole: 'GROUP_CEO_BOARD',
     outcome: 'INFO_REQUESTED',
     reason: '성과 피 조건 확인 후 재상신 (모의)',
@@ -51,26 +52,33 @@ export const MOCK_REPLIES = {
   /** ③ S3-2 (7/13 16:00) 에이전시 정보 부족 */
   S3_2_AGENCY_INSUFFICIENT: m<CounterpartyReplyInput>({ from: 'AGENCY', outcome: 'INSUFFICIENT', note: '성과 피 산식은 계약 원문 별첨이며 7/24 이후 제공 가능 (모의)', label: 'MOCK' }),
   /** ③ S3-3 (7/15) 재상신 승인 — 해지 */
-  S3_3_APPROVE_TERMINATE: m<ReplyInput>({ requestId: 'APR-005', respondentRole: 'GROUP_CEO_BOARD', outcome: 'APPROVED', decision: 'TERMINATE', reason: '해지 통보 승인 (모의)' }),
+  S3_3_APPROVE_TERMINATE: m<ReplyInput>({ target: { subjectType: 'CONTRACT' }, respondentRole: 'GROUP_CEO_BOARD', outcome: 'APPROVED', decision: 'TERMINATE', reason: '해지 통보 승인 (모의)' }),
   /** ④-a SCM: 추가 발주 불필요 */
   S4A_SCM_NOT_NEEDED: m<ScmReviewInput>({
     from: 'SCM',
-    outcome: 'NOT_NEEDED',
+    outcome: 'INFO_PROVIDED',
+    replenishmentNeeded: false,
     note: 'SPO-0001~0004 는 in_transit 에 미포함, 9/14~9/18 입고 예정. 추가 발주 불필요. 9/14 전 입고 불가(Corevia F1 포화, Business_Process_Map 1.2) (모의)',
     inboundExpectedDate: '2026-09-18',
     label: 'MOCK',
   }),
-  /** ④-a Masil 대표 조건부 승인 (requestId 는 실행 시 채움) */
-  S4A_CEO_CONDITIONAL: m<Omit<ReplyInput, 'requestId'>>({
+  /** ④-a Masil 대표 조건부 승인 */
+  S4A_CEO_CONDITIONAL: m<ReplyInput>({
+    target: { subjectType: 'EXPANSION_LINES', includes: ['PLAN-011'] },
     respondentRole: 'MASIL_CEO',
     outcome: 'APPROVED_WITH_CONDITIONS',
     itemDecisions: [{ itemId: 'PLAN-011', decision: 'CONDITIONAL', condition: '집행일 2026-09-21 로 조정 (기발주 입고 이후)' }],
     reason: '재고 입고 이후 집행 조건부 승인 (모의)',
   }),
   /** ④-b SCM: 추가 발주 필요 */
-  S4B_SCM_NEEDED: m<ScmReviewInput>({ from: 'SCM', outcome: 'NEEDED', note: 'SPO 는 in_transit 에 포함됨, 추가 발주 필요 (모의)', label: 'MOCK' }),
+  S4B_SCM_NEEDED: m<ScmReviewInput>({ from: 'SCM', outcome: 'INFO_PROVIDED', replenishmentNeeded: true, note: 'SPO 는 in_transit 에 포함됨, 추가 발주 필요 (모의)', label: 'MOCK' }),
+  /** ④ 변형: SCM 정보 부족 (입고일 미정) */
+  S4_SCM_INSUFFICIENT: m<ScmReviewInput>({ from: 'SCM', outcome: 'INSUFFICIENT', note: 'in_transit 입고일은 Corevia 확인 전 — 미정 (모의)', label: 'MOCK' }),
+  /** ① S1-6 (7/14 11:00) 에이전시 수령확인 */
+  S1_6_AGENCY_RECEIPT: m<CounterpartyReplyInput>({ from: 'AGENCY', outcome: 'RECEIPT_CONFIRMED', note: '에이전시 회신 메일 — 조건변경 통보 수령 (모의)', label: 'MOCK' }),
   /** ④-b 그룹 CEO/이사회 거절 */
-  S4B_GCB_REJECT: m<Omit<ReplyInput, 'requestId'>>({
+  S4B_GCB_REJECT: m<ReplyInput>({
+    target: { subjectType: 'REPLENISHMENT', requiredRole: 'GROUP_CEO_BOARD' },
     respondentRole: 'GROUP_CEO_BOARD',
     outcome: 'REJECTED',
     reason: '하회 구간 신규 현금 약정 불가, 9월 지급 조건으로 재협의 (모의)',

@@ -1,12 +1,12 @@
 /** 공통 상단 — W02 업무 번호(UI-09) · 가상 기준시각 · 시점 이동 · AI 모드(UI-06) · 역할 전환 */
 import { Info } from 'lucide-react';
-import type { MetaView } from '@/app/_data/types';
+import type { MetaView } from '@/domain/api-types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { fmtDateTime } from '../format';
-import { ClockDialog, type PresetOption } from './clock-dialog';
+import { ClockDialog } from './clock-dialog';
 import { RoleSwitcher } from './role-switcher';
 
-export function AppHeader({ meta, roles, roleId, presets }: { meta: MetaView; roles: { id: string; label: string }[]; roleId: string; presets: PresetOption[] }) {
+export function AppHeader({ meta, roles, roleId }: { meta: MetaView; roles: { id: string; label: string }[]; roleId: string }) {
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-700 bg-zinc-900 text-white">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2">
@@ -29,12 +29,12 @@ export function AppHeader({ meta, roles, roleId, presets }: { meta: MetaView; ro
             <TooltipContent>시연용 가상 시각입니다 — 실제 오늘 날짜와 다릅니다. 기한 판정은 이 시각 기준 (가정 A-21).</TooltipContent>
           </Tooltip>
           <span className="inline-flex h-5 items-center rounded border border-orange-300 bg-orange-50 px-1.5 text-[11px] font-medium text-orange-800">가정 A-21</span>
-          <ClockDialog simNow={meta.simNow} presets={presets} currentPreset={meta.preset.id} />
+          <ClockDialog simNow={meta.simNow} />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-zinc-300">AI</span>
           {meta.aiMode === 'MOCK' ? (
-            <span className="inline-flex h-6 items-center rounded border border-dashed border-white px-2 text-xs font-semibold" title="AI 키 없음 · 호출 실패 · 1단계 — 판단안 문장은 모의">
+            <span className="inline-flex h-6 items-center rounded border border-dashed border-white px-2 text-xs font-semibold" title="AI 키 없음 또는 강제 모의 — 판단안 문장은 모의. 실시간 호출이 실패한 판단안도 판단안 화면에 모의로 표시">
               AI: 모의
             </span>
           ) : (
@@ -45,12 +45,16 @@ export function AppHeader({ meta, roles, roleId, presets }: { meta: MetaView; ro
           <RoleSwitcher roles={roles} current={roleId} />
         </div>
       </div>
-      {meta.dataMode === 'PREVIEW' && (
-        <div className="border-t border-zinc-700 bg-zinc-800 px-4 py-1 text-xs text-zinc-200" role="note">
-          <span className="mr-2 inline-flex h-5 items-center rounded border border-dashed border-zinc-300 px-1.5 text-[11px]">모의</span>
-          1단계 미리보기: 시연 프리셋 <strong>{meta.preset.title}</strong> 을 규칙 엔진으로 재생한 상태입니다. 상태 변경(회신 · 작업 · 시점 이동)은 2단계 API 연결 후 저장됩니다.
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-700 bg-zinc-800 px-4 py-1 text-xs text-zinc-200" role="note">
+        <span>
+          운영 상태 저장소 <strong>{meta.persistence === 'POSTGRES' ? 'PostgreSQL' : '메모리 (재시작 시 초기화)'}</strong> · 원본 <strong>{meta.rawSource === 'DB' ? 'DB 적재본' : '원본 파일'}</strong> · 상태 버전 {meta.stateVersion}
+        </span>
+        <span>
+          시연 지점 <strong>{meta.preset ? meta.preset.title : '—'}</strong>
+          {meta.preset && <span className="text-zinc-400"> (이후 입력한 사건 포함)</span>}
+        </span>
+        <span>재전망 {meta.cashForecastVersion}</span>
+      </div>
     </header>
   );
 }

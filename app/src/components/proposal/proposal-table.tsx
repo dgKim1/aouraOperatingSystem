@@ -1,24 +1,31 @@
 'use client';
 /**
  * S-04 기안 건 표 — 행 선택 · 건 상세 드로어 · 1.4 참고값 보조 열(기본 숨김, UI-10).
- * 값 · 판정은 모두 받은 LineView 그대로. 선택 건 판단안 · 승인요청 만들기는 2단계 API 연결 전이라 비활성.
+ * 값 · 판정은 모두 받은 LineView 그대로. [선택 건 판단안 만들기] → POST /api/assessments, 이어서 [승인 요청 만들기] → POST /api/approval-requests.
+ * 재승인 · 재상신 표시는 요청 번호가 아니라 승인요청의 version · supersedesId 로 그린다 (FE-05).
  */
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CalendarClock, PackageX } from 'lucide-react';
-import type { LineView } from '@/app/_data/types';
+import type { LineView } from '@/domain/api-types';
 import { ClaimsFold, ReferenceChip, ReferenceFold } from '@/components/badges/fold';
 import { MoneyValue, NumValue } from '@/components/badges/values';
 import { FlagChip, LineStatusBadge, RoleChange, RoleChip } from '@/components/common';
 import { DeadlineChip } from '@/components/deadline/deadline-chip';
 import { decisionText } from '@/components/labels';
-import { Button } from '@/components/ui/button';
+import { AssessButton } from '@/components/mutation/assessment-actions';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-export function ProposalTable({ lines, focusId }: { lines: LineView[]; focusId?: string | undefined }) {
+export interface ApprovalRef {
+  version: number;
+  supersedesId: string | null;
+  statusText: string;
+}
+
+export function ProposalTable({ lines, focusId, aiMode, approvals }: { lines: LineView[]; focusId?: string | undefined; aiMode: 'LIVE' | 'MOCK'; approvals: Record<string, ApprovalRef> }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showRef, setShowRef] = useState(false);
   const [openId, setOpenId] = useState<string | null>(focusId && lines.some((l) => l.id === focusId) ? focusId : null);
@@ -38,13 +45,9 @@ export function ProposalTable({ lines, focusId }: { lines: LineView[]; focusId?:
         <span className="text-sm" aria-live="polite">
           선택 <strong className="tabular-nums">{selected.size}</strong>건
         </span>
-        <Button size="sm" disabled title="2단계 API(POST /api/assessments) 연결 후 활성">
-          선택 건 판단안 만들기
-        </Button>
-        <Button size="sm" variant="outline" disabled title="2단계 API(POST /api/approval-requests) 연결 후 활성">
-          승인 요청 만들기
-        </Button>
-        <span className="text-xs text-muted-foreground">서버가 권한자 × 확정기한별로 묶어 요청을 만듭니다 (A-11) — API 연결 전</span>
+        <div className="min-w-0 flex-1">
+          <AssessButton subjectType="EXPANSION_LINES" subjectIds={[...selected].sort()} label="선택 건 판단안 만들기" aiMode={aiMode} disabledReason={selected.size === 0 ? '건을 선택하세요' : null} />
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <Switch id="show-ref" checked={showRef} onCheckedChange={setShowRef} />
           <Label htmlFor="show-ref" className="text-xs text-zinc-600">
@@ -74,7 +77,7 @@ export function ProposalTable({ lines, focusId }: { lines: LineView[]; focusId?:
           </thead>
           <tbody>
             {lines.map((l) => (
-              <tr key={l.id} className={cn('border-t align-top hover:bg-zinc-50', selected.has(l.id) && 'bg-blue-50', l.id === focusId && 'ring-2 ring-blue-600 ring-inset')}>
+              <tr key={l.id} id={`line-${l.id}`} className={cn('scroll-mt-24 border-t align-top hover:bg-zinc-50', selected.has(l.id) && 'bg-blue-50', l.id === focusId && 'ring-2 ring-blue-600 ring-inset')}>
                 <td className="p-2">
                   <input type="checkbox" className="size-4" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`${l.id} 선택`} />
                 </td>
@@ -155,6 +158,17 @@ export function ProposalTable({ lines, focusId }: { lines: LineView[]; focusId?:
                       <Link href={`/approvals/${l.approvalRequestId}`} className="font-mono underline">
                         {l.approvalRequestId}
                       </Link>
+                      {approvals[l.approvalRequestId] && (
+                        <span className="text-zinc-600">
+                          {' '}
+                          v{approvals[l.approvalRequestId]!.version} · {approvals[l.approvalRequestId]!.statusText}
+                        </span>
+                      )}
+                      {approvals[l.approvalRequestId]?.supersedesId && (
+                        <div className="font-medium text-red-900">
+                          재승인 필요 → 재상신됨 (v{approvals[l.approvalRequestId]!.version}, {approvals[l.approvalRequestId]!.supersedesId} 대체)
+                        </div>
+                      )}
                     </div>
                   )}
                   {l.recommendation && (
