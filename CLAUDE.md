@@ -34,7 +34,8 @@ Next.js(App Router) + TypeScript · axhub Postgres + Drizzle · `@anthropic-ai/s
 AI 키가 없으면 모의(mock) 모드로 동작하고 화면에 `모의` 표시.
 
 ## 역할과 소유 영역 (TECH_STACK 3절)
-- 기획 `aoura-planner`: `docs/` (코드 작성 안 함)
+- 기획 `aoura-planner`: `docs/` (`docs/devlog/` 제외, 코드 작성 안 함)
+- 기록 `aoura-recorder`: `docs/devlog/` — 백엔드 · 프론트엔드의 작업 내용과 설계 의도(작업 기록 LOG · 설계 결정 DD). 코드와 다른 문서는 읽기만
 - 백엔드 `aoura-backend`: `app/src/domain/` `app/src/server/` `app/drizzle/` `app/scripts/` `app/src/app/api/`
 - 프론트엔드 `aoura-frontend`: `app/src/app/`(api 제외) `app/src/components/`
 - 남의 영역을 고쳐야 하면 직접 고치지 말고 무엇을 왜 바꿔야 하는지 보고한다. 공유 타입 `app/src/domain/types.ts` 는 백엔드 소유.

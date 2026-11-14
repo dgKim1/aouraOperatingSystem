@@ -1,0 +1,10 @@
+# app/ 전용 (루트 .gitignore 는 수정 금지)
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage/

@@ -12,10 +12,10 @@
 | 규칙 · 계산 | **TypeScript 순수 함수 + 상태 머신** — 권한 · 기한 · 공헌이익 · 재고 커버는 코드가 계산 |
 | AI | **Anthropic TypeScript SDK**, 모델 `claude-opus-5-5`, **단일 에이전트 + tool use** |
 | AI 키 | **개인 Anthropic API 키** — `.env` 에 넣고 `axhub env set` 으로 등록 (채팅 · 커밋 금지) |
-| 화면 | Tailwind CSS + shadcn/ui + Recharts |
-| 검증 | Vitest (규칙 단위 테스트 · 시연 3상황 시나리오 테스트) + `tsc --noEmit` + ESLint |
+| 화면 | Tailwind CSS + shadcn/ui + 서버 렌더 SVG 차트 (Recharts 제외 — devlog DD-022) |
+| 검증 | Vitest (규칙 단위 테스트 · 시연 ①~④ 시나리오 테스트) + `tsc --noEmit` + ESLint |
 | 배포 | axhub lounge · self-hosted 저장소 push · **docker** 방식 (현재 static → 전환 필요, 아래 5절) |
-| 개발 하네스 | Claude Code + 역할 에이전트 3개(기획 · 백엔드 · 프론트엔드) + `CLAUDE.md` + `docs/` |
+| 개발 하네스 | Claude Code + 역할 에이전트 4개(기획 · 백엔드 · 프론트엔드 · 기록) + `CLAUDE.md` + `docs/` |
 
 ## 2. 왜 이렇게 정했나
 
@@ -57,7 +57,8 @@
 |---|---|---|
 | 공통 규칙 | `CLAUDE.md` (프로젝트 루트) | 모든 에이전트가 지키는 금지 · 원칙 · 완료 기준 · 명령어 |
 | 기준 문서 | `docs/` | PROBLEM(과제) · W02_TASK(업무 · 데이터) · TECH_STACK(이 문서) · DEPLOY(배포) · 이후 설계 문서 |
-| 역할 에이전트 | `~/.claude/agents/aoura-planner.md` · `aoura-backend.md` · `aoura-frontend.md` | 역할별 책임 · 소유 영역 · 완료 조건 |
+| 역할 에이전트 | `~/.claude/agents/aoura-planner.md` · `aoura-backend.md` · `aoura-frontend.md` · `aoura-recorder.md` | 역할별 책임 · 소유 영역 · 완료 조건 |
+| 개발 기록 | `docs/devlog/` (기록 에이전트) | 작업 기록(LOG) · 설계 결정(DD) — 백엔드 · 프론트엔드 보고와 변경분이 들어올 때마다 갱신 |
 | 피드백 루프 | `npm run check` (= typecheck + lint + test) | 모든 작업의 완료 판정. 통과 못 하면 완료 아님 |
 | 배포 | 스킬 `aoura-deploy` ("배포") | `docs/DEPLOY.md` 절차 |
 
@@ -70,6 +71,7 @@
 | **기획** (`aoura-planner`) | `docs/` — 요구사항 · 온톨로지 · 화면/시나리오 명세 · 원본/가정 구분 · 수용 기준 · 결과 검수 | 앱 코드 작성 |
 | **백엔드** (`aoura-backend`) | `app/src/server/`, `app/src/domain/`, `app/drizzle/`, `app/scripts/` — DB 스키마 · 원본 적재 · 규칙 엔진 · 상태 머신 · AI 에이전트 · 도구 · API | 화면 컴포넌트 |
 | **프론트엔드** (`aoura-frontend`) | `app/src/app/`(페이지), `app/src/components/` — 판단 화면 · 승인 UI · 타임라인 · 배지 | 규칙 · 계산 로직 (API 결과만 표시) |
+| **기록** (`aoura-recorder`) | `docs/devlog/` — 백엔드 · 프론트엔드의 작업 기록(LOG)과 설계 결정(DD): 무엇을 · 왜 · 버린 대안 · 검증 결과 | 코드 · 다른 문서 수정 (읽기만) |
 
 공유 계약: `app/src/domain/types.ts`(온톨로지 타입)와 API 응답 타입은 **백엔드가 소유**, 변경 시 기획 문서와 함께 갱신.
 
