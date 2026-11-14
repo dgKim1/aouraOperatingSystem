@@ -5,6 +5,7 @@
 > **2026-11-14 갱신**: 백엔드 2단계(DB · API 24개 · AI 에이전트) 반영 — 4절 실제 폴더 구조, 5절 남은 결정(원본 CSV 의 docker 포함 방식 **사용자 결정 대기**), 5-1 로컬 개발 DB · 환경변수 이름, 2-4 모의 대체 방식, 2-5 원본 적재 테이블 일반화.
 > **2026-11-14 갱신(2)**: 사용자 결정 — **실시간 AI 판단안 확인(BE-15) 보류, 시연은 모의 판단안**. 2-3 · 2-4 · 5 · 5-1 반영. 과제 문서(A01 심사 관점 · A04 자기점검)와의 긴장과 제출 설명용 구간 구분은 [ONTOLOGY 9-1](ONTOLOGY.md#9-1-사용자-결정--ai-방식-b-실제-실행-1회--기록-재생).
 > **2026-11-14 갱신(3)**: 사용자 결정 2건 반영 — ① **AI 방식 (b)**: 실제 Claude 로 판단안을 한 번만 만들고(2026-11-14 17:19 KST 실행 1회 성공) 이후에는 호출하지 않고 기록을 보여준다, 배포 런타임은 `AOURA_AI_MODE=mock`(2-3 · 2-4, 갱신(2)의 "보류"를 대체) ② **배포 A안**: 이미지에 원본 CSV 복사 + 시작 시 마이그레이션(5절 — axhub 확인 사실 · 미확인 4건, 상세는 [DEPLOY.md](DEPLOY.md)). 4절 폴더 구조(4단계), 5-1 환경변수 갱신.
+> **2026-11-15 갱신(4)**: **첫 docker 배포 성공**(2026-11-14 17:52 KST, 커밋 `4dd0161`, 주소 https://aoura-os-oiw3.axhub.app — `.page` 는 307 로 넘어옴) 반영 — 1절 배포 행, 2-4, 5절 체크 항목(실배포 · `AOURA_AI_MODE` 등록 완료, 미확인 4건 해소 → 남은 2건), 5-1(`DATABASE_URL` 없는 빌드본의 한계). 4절 제목의 "미커밋"은 그 시점 기록이다 — 4단계 · 배포 구성은 커밋 `4dd0161` 에 들어갔다.
 
 ## 1. 결정 요약
 
@@ -17,7 +18,7 @@
 | AI 키 | **개인 Anthropic API 키** — `.env` 에 넣고 `axhub env set` 으로 등록 (채팅 · 커밋 금지) |
 | 화면 | Tailwind CSS + shadcn/ui + 서버 렌더 SVG 차트 (Recharts 제외 — devlog DD-022) |
 | 검증 | Vitest (규칙 단위 테스트 · 시연 ①~④ 시나리오 테스트) + `tsc --noEmit` + ESLint |
-| 배포 | axhub lounge · self-hosted 저장소 push · **docker** 방식 — **A안**: 최상위 Dockerfile 이 원본 CSV 를 이미지에 복사, 시작 시 마이그레이션(5절 · [DEPLOY.md](DEPLOY.md)). 아직 배포 전 |
+| 배포 | axhub lounge · self-hosted 저장소 push · **docker** 방식 — **A안**: 최상위 Dockerfile 이 원본 CSV 를 이미지에 복사, 시작 시 마이그레이션(5절 · [DEPLOY.md](DEPLOY.md)). **배포됨**(2026-11-14, 커밋 `4dd0161`) — https://aoura-os-oiw3.axhub.app |
 | 개발 하네스 | Claude Code + 역할 에이전트 4개(기획 · 백엔드 · 프론트엔드 · 기록) + `CLAUDE.md` + `docs/` |
 
 ## 2. 왜 이렇게 정했나
@@ -51,7 +52,7 @@
 - 실시간 경로 확인: 2026-11-14 첫 호출들은 API 크레딧 부족(400)으로 실패 → 설계대로 모의 대체 확인. 사용자가 크레딧을 충전한 뒤 **2026-11-14 17:19 KST 에 실제 실행 1회가 성공**했다(BE-15 — 응답 2회, 응답의 model 필드 `claude-opus-5-5`, `stop_reason: tool_use`, 숫자 출처 검증 통과 — devlog LOG-030, 기록 파일로 확인). **추가 실행은 하지 않는다**(사용자 결정 (b)).
 - **기록 재생** (4단계, DD-049 · DD-050): 성공한 실행을 `server/ai/recorded/rec-001-contract.json` 에 남기고 `GET /api/assessments/recorded` 로 보여준다. 이 API 는 AI 를 호출하지 않고 운영 상태를 읽거나 바꾸지 않으며, 기록의 근거가 지금 규칙 계산과 같은지 매번 대조한다(`basisCheck`). 운영 타입의 `aiMode`(`LIVE` · `MOCK`)는 넓히지 않고 재생 전용 타입(`RecordedAssessmentView`, `aiMode: 'RECORDED'`)으로 분리했다 — 기록이 운영 판단안 · 이력에 섞이면 시연 중 "지금 AI 가 만든 것"으로 읽히고 프리셋 결정성이 깨진다. 기록 파일에는 키 · 헤더 · 접속 문자열을 넣지 않는다.
 - **호출 추적**: 실시간 판단안에는 `aiTrace`(응답별 메시지 ID · 응답 모델 · stop_reason · 입력/출력 토큰 수)를 남긴다. 실패 사유에는 API 오류의 종류(상태 코드 · type)만 넣고 안내 문구 · 키는 저장하지 않는다.
-- 키가 없거나 호출 실패 시 **모의(mock) 모드**로 동작해 시연이 끊기지 않게 한다(모의 결과는 화면에 [모의] 표시). **시연 · 배포 환경은 `AOURA_AI_MODE=mock`** 으로 실시간 호출을 시도하지 않는다 — 크레딧 없는 키로 호출하면 실패 뒤 모의 대체가 되어 "실시간 호출 실패 → 모의로 생성" 경고가 시연 화면에 뜨고 응답이 늦어지기 때문이다. 모의 모드에서도 도구 6개는 코드가 같은 입력으로 실행하고(`toolCalls[].actor = SYSTEM`) 숫자 출처 검증을 거친다. 배포 환경에 `AOURA_AI_MODE` 는 **아직 미등록**이다 — 배포 전에 등록한다(5절).
+- 키가 없거나 호출 실패 시 **모의(mock) 모드**로 동작해 시연이 끊기지 않게 한다(모의 결과는 화면에 [모의] 표시). **시연 · 배포 환경은 `AOURA_AI_MODE=mock`** 으로 실시간 호출을 시도하지 않는다 — 크레딧 없는 키로 호출하면 실패 뒤 모의 대체가 되어 "실시간 호출 실패 → 모의로 생성" 경고가 시연 화면에 뜨고 응답이 늦어지기 때문이다. 모의 모드에서도 도구 6개는 코드가 같은 입력으로 실행하고(`toolCalls[].actor = SYSTEM`) 숫자 출처 검증을 거친다. 배포 환경에 `AOURA_AI_MODE=mock` 이 **등록돼 있다**(2026-11-14, runtime · plain — 배포 주소 `GET /api/meta` 가 `aiMode: MOCK`).
 
 ### 2-5. 데이터 원칙
 - 원본 CSV(`|` 구분, 원 · VAT 제외)는 **읽기 전용 원본 테이블**로 적재하고 파일 경로 · 행 출처를 남긴다. 원본 파일은 수정하지 않는다. 2단계 구현은 파일별 테이블 대신 `raw_files`(파일 목록) + `raw_rows`(`src_file` · `src_row` · 원문 jsonb) 두 테이블로 일반화했다 — 17 파일 24,290행([ONTOLOGY 1-1](ONTOLOGY.md#1-1-원본-적재-테이블-읽기-전용)). **배포(A안)에서는 원본을 DB 에 적재하지 않고 이미지 안의 CSV 파일에서 직접 읽는다**(`rawSource: FILES`, 5절) — 배포된 앱 DB 에 외부에서 적재할 길이 없기 때문이다. `raw_files` · `raw_rows` 적재(`db:load-raw`)는 로컬 개발용 경로로 남는다. 어느 쪽이든 원본 파일은 읽기 전용이고 값의 출처 경로 · 행은 같다.
@@ -138,12 +139,13 @@
   5. 등록된 env 는 `ANTHROPIC_API_KEY` 뿐, `AOURA_AI_MODE` 는 미등록.
   6. 배포 이력에 커밋 `602a5c2` 의 실패 건(`resolve.spec_invalid` — 앱은 docker, manifest 는 static)이 있다. 옛 정적 페이지는 그대로다(기획이 `axhub deploy list` 로 직접 확인).
 
-  **미확인** — 처음 4건(한글 폴더명 `COPY` · 실제 docker build · 풀러 위 PgStore · XS 사양 기동 시간) 중 앞의 둘과 로컬 제한 사양 기동은 로컬 docker 로 확인됐다(백엔드 보고: 빌드 약 56초 · 기동 0.77초 — 0.5코어 · 1GB). **남은 미확인 4건**: axhub 빌더에서의 실제 빌드(amd64) · 실제 트랜잭션 풀러 위 저장소 동작 · 실환경 기동 시간 · `axhub deploy check`([DEPLOY.md 2-4](DEPLOY.md#2-4-미확인--실배포에서만-확인되는-것)).
-- [x] **배포 구성 반영 (BE-14) — 구현 · 로컬 docker 확인, 실배포 대기** (2026-11-14, 미커밋 작업본. 기획이 파일을 읽어 확인): 최상위 `Dockerfile`(`node:22-slim` 4단계 — deps · build · raw · runner, `USER node`, `RAW_DATA_DIR=/data/raw`), 허용 목록 방식 `.dockerignore`, `axhub.yaml`(최상위 `root` **미선언** · `deploy_method: docker` · `port: 3000` · `health_path: /api/healthz` · `start_period: 90s` · `database: engine: postgres` · `env.required: AOURA_AI_MODE`). 이미지에는 `MASIL_FILES` 의 CSV 17개만 담는다(웹 공개 경로 밖, md 문서 6개는 담지 않음 — 런타임이 읽지 않는다). 시작 순서: `DIRECT_DATABASE_URL` 로 마이그레이션 → 운영 상태가 비어 있으면 SEED(있으면 유지) → 서버. 실패하면 종료 코드 1 이고 서버는 뜨지 않는다. `raw_rows` 는 적재하지 않는다. 상태 확인 `/api/healthz` 는 DB 를 보지 않는다. 상세 · 로컬 확인 결과는 [DEPLOY.md 2-3](DEPLOY.md#2-3-구성-저장소-파일-기준--2026-11-14-작업본). 2단계 문서의 "`root: app`" 안은 **폐기**. **`axhub.yaml` 이 docker 로 바뀌었으므로 이제 `git push origin` 은 실제 docker 배포다 — 사용자가 "배포"라고 할 때만. GitHub 백업은 `git push github main` 뿐.**
-- [ ] **실배포** — 사용자의 "배포" 지시 대기. 순서: `AOURA_AI_MODE=mock`(runtime) 등록 → 커밋 → `git push origin` → 배포 후 점검 5항목(DEPLOY.md 4절 9번).
+  **미확인** — 처음 4건(한글 폴더명 `COPY` · 실제 docker build · 풀러 위 PgStore · XS 사양 기동 시간) 중 앞의 둘과 로컬 제한 사양 기동은 로컬 docker 로 확인됐다(백엔드 보고: 빌드 약 56초 · 기동 0.77초 — 0.5코어 · 1GB). **그 뒤 4건(axhub 빌더 빌드 · 트랜잭션 풀러 위 저장소 동작 · 실환경 기동 · `axhub deploy check`)은 2026-11-14 첫 docker 배포로 모두 확인됐다. 남은 미확인 2건**: 재배포 시 axhub DB 내용(운영 상태) 유지 · 장시간 동작([DEPLOY.md 2-4](DEPLOY.md#2-4-미확인--실배포에서만-확인되는-것)).
+- [x] **배포 구성 반영 (BE-14) — 완료 · 배포됨** (2026-11-14, 커밋 `4dd0161`. 아래는 구현 내용 — 기획이 파일을 읽어 확인): 최상위 `Dockerfile`(`node:22-slim` 4단계 — deps · build · raw · runner, `USER node`, `RAW_DATA_DIR=/data/raw`), 허용 목록 방식 `.dockerignore`, `axhub.yaml`(최상위 `root` **미선언** · `deploy_method: docker` · `port: 3000` · `health_path: /api/healthz` · `start_period: 90s` · `database: engine: postgres` · `env.required: AOURA_AI_MODE`). 이미지에는 `MASIL_FILES` 의 CSV 17개만 담는다(웹 공개 경로 밖, md 문서 6개는 담지 않음 — 런타임이 읽지 않는다). 시작 순서: `DIRECT_DATABASE_URL` 로 마이그레이션 → 운영 상태가 비어 있으면 SEED(있으면 유지) → 서버. 실패하면 종료 코드 1 이고 서버는 뜨지 않는다. `raw_rows` 는 적재하지 않는다. 상태 확인 `/api/healthz` 는 DB 를 보지 않는다. 상세 · 로컬 확인 결과는 [DEPLOY.md 2-3](DEPLOY.md#2-3-구성-저장소-파일-기준--2026-11-14-작업본). 2단계 문서의 "`root: app`" 안은 **폐기**. **`axhub.yaml` 이 docker 로 바뀌었으므로 이제 `git push origin` 은 실제 docker 배포다 — 사용자가 "배포"라고 할 때만. GitHub 백업은 `git push github main` 뿐.**
+- [x] **실배포** — 2026-11-14 17:47:50 ~ 17:52:15 KST 첫 docker 배포 성공(커밋 `4dd0161`, 배포 ID `a35dc1b2-be52-4c8f-b2bb-03df6b0f935c`). 배포 후 점검 5항목 통과, 배포 주소에서 시연 ①~④ · 기록 화면 확인 → 완료 조건 5개 「충족」(DEMO 0-2). 주소 https://aoura-os-oiw3.axhub.app .
+- [ ] **재배포** — 로컬 미커밋 수정(결과 보관함 3곳 · 화면 ID `S-05R` · 타임라인 라벨)을 올린다. 사용자의 "배포" 지시 대기. 재배포 뒤 운영 상태 유지 여부(미확인)를 확인하고 최종 시연 상태를 다시 남긴다(DEPLOY 4절 12번).
 - [x] `ANTHROPIC_API_KEY`: 로컬은 `app/.env.local`(git 제외 — `.git/info/exclude`), axhub 에는 2026-11-12 **secret · stage=runtime** 으로 등록 완료 (DEPLOY.md 5절 방법).
-- [ ] `AOURA_AI_MODE=mock` 을 axhub **runtime** env 로 등록 — 비밀값 아님. 등록하지 않으면 배포가 `prepare.required_env_missing` 으로 멈춘다. `--from-dotenv` 방식은 stage 가 build 로 잡히므로 쓰지 않는다. 사용자의 "배포" 지시 뒤(DEPLOY.md 5절).
-- [x] 온톨로지 · 상태 머신 · 화면 명세 (기획 에이전트 첫 작업) — 2026-11-12 문서화: [ONTOLOGY.md](ONTOLOGY.md) · [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md) · [SCREEN_SPEC.md](SCREEN_SPEC.md). 구현: 1단계(커밋 `be79a9d`) · 2단계(커밋 `f2ba215`) · 3단계(커밋 `43edbbc` — 쓰기 권한 서버 검사 · ③ 화면 검증) · **4단계 백엔드(작업본, 미커밋 — BE-21~24 · AI 실행 기록 · 재생 API, devlog LOG-030)**. 배포 준비(BE-14)는 구현 · 로컬 docker 확인까지. 프론트엔드 4단계(FE-15 ~ 19 — 기록 재생 화면 포함)도 완료(프론트엔드 보고, ONTOLOGY 11-4). **알려진 결함 1건 수정 중**: 번들을 거친 서버에서 기록 재생의 `basisCheck` 가 불일치로 나온다(BE-25 — 실배포 전에 고친다). 완료 조건 판정은 DEMO 0-2.
+- [x] `AOURA_AI_MODE=mock` 을 axhub **runtime** env 로 등록 — 2026-11-14 완료(`axhub env set AOURA_AI_MODE mock --app aoura-os --tenant lounge --stage runtime --plain` — 검증된 명령, DEPLOY.md 5절). 비밀값 아님. 지우면 배포가 `prepare.required_env_missing` 으로 멈춘다. `--from-dotenv` 방식은 stage 가 build 로 잡히므로 쓰지 않는다.
+- [x] 온톨로지 · 상태 머신 · 화면 명세 (기획 에이전트 첫 작업) — 2026-11-12 문서화: [ONTOLOGY.md](ONTOLOGY.md) · [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md) · [SCREEN_SPEC.md](SCREEN_SPEC.md). 구현: 1단계(커밋 `be79a9d`) · 2단계(커밋 `f2ba215`) · 3단계(커밋 `43edbbc` — 쓰기 권한 서버 검사 · ③ 화면 검증) · **4단계 백엔드(작업본, 미커밋 — BE-21~24 · AI 실행 기록 · 재생 API, devlog LOG-030)**. 배포 준비(BE-14)는 구현 · 로컬 docker 확인까지. 프론트엔드 4단계(FE-15 ~ 19 — 기록 재생 화면 포함)도 완료(프론트엔드 보고, ONTOLOGY 11-4). 번들 서버에서 기록 재생의 `basisCheck` 가 불일치로 나오던 결함(BE-25)은 **해소**(LOG-036)되어 배포 주소에서 「일치」다. 4단계 · 배포 구성은 커밋 `4dd0161` 로 배포됐다. 완료 조건 판정은 DEMO 0-2.
 - [x] **실제 AI 판단안 확인 (BE-15)** — 2026-11-14 17:19 KST 실행 1회 성공 · 기록 저장 · 재생 API(사용자 결정 (b)). 추가 실행 없음.
 
 ### 5-1. 로컬 개발 DB 와 환경변수 (2026-11-14)
@@ -156,11 +158,11 @@
 
 | 환경변수 | 용도 | 없으면 | 어디에 |
 |---|---|---|---|
-| `DATABASE_URL` | 운영 상태 DB 접속(로컬은 원본 적재 DB 도) | 메모리 저장소(재시작 시 초기화, `persistence: MEMORY`) | 로컬 `.env.local` · axhub 가 런타임에 **주입**(트랜잭션 풀러) — 등록하지 않는다. 실제 풀러 위 저장소 동작은 **미확인**(실배포에서 확인) |
+| `DATABASE_URL` | 운영 상태 DB 접속(로컬은 원본 적재 DB 도) | 메모리 저장소(재시작 시 초기화, `persistence: MEMORY`) | 로컬 `.env.local` · axhub 가 런타임에 **주입**(트랜잭션 풀러) — 등록하지 않는다. 실제 풀러 위 저장소 동작은 **확인됨**(2026-11-14 배포 — DEPLOY 2-4). **한계 — 빌드본에서는 DB 가 필요하다**: `DATABASE_URL` 없이 `next start`(빌드본)를 띄우면 메모리 저장소가 페이지와 API 사이에 공유되지 않는다(프리셋 재생 뒤 API 에는 작업이 있는데 화면에는 0건 — 2026-11-15 프론트엔드 보고, 기획 미재확인). `next dev` 와 배포(Postgres)는 해당 없다. 메모리 저장소는 `next dev` 에서만 쓰고, 빌드본을 로컬에서 확인할 때는 로컬 Postgres 를 붙인다(ONTOLOGY 11-7 BE-27) |
 | `DIRECT_DATABASE_URL` | **시작 단계 전용** — 마이그레이션 · 세션 잠금 · 시드(세션 단위 주소) | `DATABASE_URL` 로 대신하되 세션 잠금 없이 | axhub 가 런타임에 **주입** — 등록하지 않는다. 로컬은 필요 없음 |
 | `MIGRATIONS_DIR` | 시작 단계의 마이그레이션 폴더 | 실행 위치의 `drizzle/migrations` | 설정하지 않는다(이미지에 기본 위치로 들어 있음) |
 | `PORT` | 서버 포트 | 3000 | axhub 가 주입(`runtime.port`) — 등록하지 않는다 |
 | `ANTHROPIC_API_KEY` | 실시간 판단안 | 모의 모드(`aiMode: MOCK`) | 로컬 `.env.local` · axhub secret(runtime, 등록됨). `AOURA_AI_MODE=mock` 이면 쓰이지 않는다 |
-| `AOURA_AI_MODE` | `mock` 이면 키가 있어도 모의 강제(시연 · 테스트) | 키가 있으면 실시간 | **배포(시연) 런타임에 `mock` 설정** — 비밀값 아님, `axhub env set`(2026-11-14 결정, BE-14). **axhub 에 아직 미등록** — 배포 전에 등록. 로컬 시연도 `mock` 권장. 기록 재생(`/api/assessments/recorded`)은 이 값과 무관하게 같은 응답 |
+| `AOURA_AI_MODE` | `mock` 이면 키가 있어도 모의 강제(시연 · 테스트) | 키가 있으면 실시간 | **배포(시연) 런타임에 `mock` 설정** — 비밀값 아님, `axhub env set`(2026-11-14 결정, BE-14). **axhub 에 등록됨**(2026-11-14). 로컬 시연도 `mock` 권장. 기록 재생(`/api/assessments/recorded`)은 이 값과 무관하게 같은 응답 |
 | `RAW_DATA_DIR` | 원본 CSV 폴더 절대 경로 | `app/` 기준 `../01_참가자_배포용/04_원본데이터`, 그것도 없으면 DB `raw_rows` | 이미지에서 `RAW_DATA_DIR=/data/raw`(Dockerfile `ENV`) → `rawSource: FILES`. 등록하지 않는다 |
 | `TEST_DATABASE_URL` | DB 통합 테스트(`tests/db/`) 전용 DB | DB 테스트 건너뜀 | 로컬만 (운영 DB 를 넣지 않는다) |

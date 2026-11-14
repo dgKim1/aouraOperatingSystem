@@ -5,6 +5,7 @@
 
 > **2026-11-14 갱신**: 배포 방식 **A안 확정**(이미지에 원본 CSV 복사 + 시작 시 마이그레이션 — 사용자 결정 "axhub 전제를 확인한 뒤 되는 쪽", 백엔드 확인 결과 A안, devlog DD-051 · LOG-030). 2절을 docker 구성으로 다시 썼고, 4절 절차 · 5절 환경변수 · 7절 이력(실패 1건)을 갱신했어요.
 > **2026-11-14 갱신(2)**: 백엔드가 배포 준비(BE-14) 구현을 마쳤어요 — **구현 · 로컬 docker 확인, 실배포 대기**. 2절을 저장소의 실제 파일(`Dockerfile` · `.dockerignore` · `axhub.yaml` · `app/scripts/deploy/*` · `app/src/server/deploy/bootstrap.ts` · `app/src/app/api/healthz/route.ts`, 모두 미커밋 작업본)을 기획이 읽어 다시 썼어요. 로컬 docker 실행 결과는 백엔드 보고를 인용했어요(기획은 docker 를 돌리지 않았어요). 배포 · push · env 등록은 아직 아무도 하지 않았어요.
+> **2026-11-14 갱신(3)**: **첫 docker 배포 성공** — 커밋 `4dd0161`, 배포 ID `a35dc1b2-be52-4c8f-b2bb-03df6b0f935c`, 17:47:50 ~ 17:52:15 KST(약 4분 25초). 실제 서비스 주소는 **https://aoura-os-oiw3.axhub.app** 이에요(`.page` 주소는 307 로 여기에 넘어와요). 배포 후 점검 5항목 통과, `AOURA_AI_MODE` 등록 명령 검증됨, 실배포 미확인 4건 해소 → **남은 미확인 2건**(재배포 시 DB 내용 유지 · 장시간 동작). 1절 · 2-2 · 2-3 · 2-4 · 4절 · 5절 · 6절 · 7절을 고쳤고 4절 12번에 **재배포 주의**를 넣었어요. 위 갱신 · 갱신(2)의 "미커밋" · "아직 아무도 하지 않았어요"는 그 시점의 기록이에요. **기획이 직접 확인한 것**(2026-11-14 22:18 KST, 읽기 전용): `.page` → `.app` 307 · `healthz` 200 · `meta`(`MOCK` · `POSTGRES` · `FILES`) · `axhub deploy list`(성공 건) · `axhub env list`(`AOURA_AI_MODE` runtime plain). 나머지 배포 결과는 메인 세션 · 프론트엔드 보고와 devlog LOG-036 · 039 · 040 을 인용했어요.
 
 ---
 
@@ -12,15 +13,15 @@
 >
 > **`axhub.yaml` 이 `deploy_method: docker` 로 바뀌었어요. 이제 `git push origin` 은 실제 docker 배포예요.**
 >
-> - 전에는 `axhub.yaml` 이 static 이라, push 해도 "배포 방식 불일치"로 준비 단계에서 실패하고 옛 정적 페이지가 그대로 남았어요(7절 실패 이력). 그 안전판은 이제 없어요.
-> - docker 설정이 들어간 커밋을 `origin` 에 push 하면 빌드 → 앱 DB 생성 → 마이그레이션 · 시드 → 서비스 교체까지 진행돼요. 옛 정적 페이지는 새 서비스로 바뀌어요.
-> - 2026-11-14 현재 이 변경은 **미커밋 작업본**이에요. 커밋되는 순간부터 그다음 `git push origin` 이 배포예요.
+> - **2026-11-14 17:52 KST 부터 운영 시스템이 실제로 떠 있어요**(7절). 이제 `origin` push 는 떠 있는 서비스를 새 이미지로 바꾸는 **재배포**예요. 옛 정적 페이지는 없어졌어요.
+> - push 하면 빌드 → 마이그레이션 → (운영 상태가 비어 있을 때만) 시드 → 서비스 교체까지 진행돼요. **재배포 뒤 운영 상태(남겨 둔 시연 상태)가 그대로인지는 실배포에서 확인한 적이 없어요**(2-4) — 4절 12번 재배포 주의를 따라요.
+> - 예전(static 시절)에는 push 해도 "배포 방식 불일치"로 준비 단계에서 실패해 서비스가 바뀌지 않았어요(7절 실패 이력). 그 안전판은 이제 없어요.
 > - 그래서:
 >   1. 사용자가 **"배포"라고 하기 전에는 `origin` 에 push 하지 않아요.**
 >   2. **GitHub 백업은 `git push github main` 뿐**이에요(배포와 무관).
 >   3. `git push` 를 원격 이름 없이 쓰지 않아요 — 기본 원격이 `origin` 이에요.
 >   4. 커밋 요청을 받았을 때 `axhub.yaml` · `Dockerfile` 이 스테이징에 들어가면 "이 커밋 뒤의 origin push 는 배포"라고 알려요.
->   5. push 전에 `AOURA_AI_MODE` 를 등록해요(5절) — 없으면 `prepare.required_env_missing` 으로 멈춰요.
+>   5. `AOURA_AI_MODE` 는 등록돼 있어요(5절, 2026-11-14). 지우면 다음 배포가 `prepare.required_env_missing` 으로 멈춰요.
 
 ---
 
@@ -32,12 +33,12 @@
 | 앱 slug | `aoura-os` |
 | 앱 ID | `67aa2c25-3329-4ee9-8cb7-3b5114266cf2` |
 | 테넌트(조직) | `lounge` (ID `c7a0a6fe-86c6-45f4-adc2-3ab7bd19ea36`) — **반드시 lounge** |
-| 배포 방식 | **`docker`** (2026-11-12 static 에서 전환 · 되돌릴 수 없음). `axhub.yaml` 도 docker 로 맞춤(작업본). 첫 docker 배포 성공 전까지는 옛 정적 페이지가 계속 열려 있음 |
+| 배포 방식 | **`docker`** (2026-11-12 static 에서 전환 · 되돌릴 수 없음). `axhub.yaml` 도 docker(커밋 `4dd0161`). 2026-11-14 첫 docker 배포 성공 — 옛 정적 페이지는 운영 시스템으로 바뀌었어요 |
 | 코드 저장 위치 | axhub self-hosted 저장소 (`git_backend: selfhosted`) |
-| 앱 주소 | https://aoura-os-oiw3.axhub.page — **지금은 옛 정적 페이지**(2026-11-10 배포분). 운영 시스템은 아직 배포되지 않았어요 |
+| 앱 주소 | **https://aoura-os-oiw3.axhub.app** — 운영 시스템(2026-11-14 배포분, 커밋 `4dd0161`). 주: `https://aoura-os-oiw3.axhub.page` 는 이 주소로 **307 리다이렉트**돼요(2026-11-14 확인). 문서 · 제출 · 점검 명령에는 `.app` 주소를 써요 <!-- .page → .app 307. 이전 문서의 .page 표기는 2026-11-14 에 모두 .app 으로 고쳤다 --> |
 | CLI | axhub CLI (`~/.axhub/bin/axhub`), 로그인 계정 lounge 멤버 |
 
-- `origin/main` 은 커밋 `602a5c2`(2026-11-13)이에요. 로컬 `main` 은 그 뒤 커밋 3개(`be79a9d` · `f2ba215` · `43edbbc`)와 미커밋 작업본(4단계 · 배포 준비)이 더 있어요. 첫 docker 배포는 이 전부를 한 번에 올리게 돼요.
+- `origin/main` 은 커밋 `4dd0161`(2026-11-14 push — 지금 떠 있는 배포분)이에요. 로컬에는 그 뒤 **미커밋 수정**(타임라인 라벨 · 결과 패널 다듬기 · 문서)이 있어요. 다음 `origin` push 가 재배포예요(4절 12번).
 
 ## 2. 배포 구성 (A안 — 2026-11-14 확정)
 
@@ -61,7 +62,7 @@
 | 4 | **앱 DB 는 외부에서 접속할 수 없다** | 로컬에서 마이그레이션 · 적재를 돌릴 수 없다 → 컨테이너가 시작할 때 스스로 마이그레이션 |
 | 5 | `axhub db exec` 는 INSERT 류만 · 1MiB · 1,000문장 · 30초 한도이고, **심사 기간에는 쓰기가 막힌다** | 배포 뒤 수동 DB 작업에 기대지 않는다(B 기각 이유) |
 | 6 | 런타임에 **`DATABASE_URL`(트랜잭션 풀러)** 과 **`DIRECT_DATABASE_URL`(직접 접속 — 마이그레이션용)** 이 주입된다 | 마이그레이션은 `DIRECT_DATABASE_URL`, 앱의 조회 · 쓰기는 `DATABASE_URL` |
-| 7 | 등록된 환경변수는 **`ANTHROPIC_API_KEY` 뿐**이고 `AOURA_AI_MODE` 는 **미등록**. 배포 이력에 커밋 `602a5c2` 의 **실패 1건**(`resolve.spec_invalid` — 앱은 docker, manifest 는 static)이 있고 옛 정적 페이지는 그대로다 | 배포 전에 `AOURA_AI_MODE=mock` 등록(5절). 실패 건은 7절 이력 (기획이 2026-11-14 `axhub deploy list` 로 실패 건 직접 확인) |
+| 7 | (배포 전 기록) 등록된 환경변수는 `ANTHROPIC_API_KEY` 뿐이었고 `AOURA_AI_MODE` 는 미등록, 배포 이력에 커밋 `602a5c2` 의 실패 1건(`resolve.spec_invalid`)이 있었다. **2026-11-14 뒤**: `AOURA_AI_MODE`(runtime · plain · `mock`) **등록됨**, 배포 이력은 실패 1건 + docker 성공 1건(`4dd0161`) | 5절 · 7절 (기획이 `axhub env list` · `axhub deploy list` 로 직접 확인 — 2026-11-14 22:18) |
 
 ### 2-3. 구성 (저장소 파일 기준 — 2026-11-14 작업본)
 
@@ -128,7 +129,7 @@
 | `GET /api/healthz` | 200 |
 | `GET /api/meta` | `aiMode: MOCK` · `persistence: POSTGRES` · `rawSource: FILES` |
 | 프리셋 `S1_7` 리셋 → 점검 | **7/7** |
-| `GET /api/assessments/recorded` | 200 — 단 **알려진 결함(수정 중, BE-25)**: 번들을 거친 서버에서는 `basisCheck.ok` 가 `false` 로 나온다 |
+| `GET /api/assessments/recorded` | 200 — 이 확인 시점에는 번들을 거친 서버에서 `basisCheck.ok` 가 `false` 였어요(BE-25). **그 뒤 고쳤어요**(기록 원문을 문자열로 읽음 — devlog LOG-036). 배포 주소에서 `ok = true` 확인(4절 9번 결과) |
 | 원본 CSV · 내부 파일을 HTTP 로 요청 | 404 |
 | 컨테이너 재시작 | 운영 상태 유지 (시드로 덮어쓰지 않음) |
 
@@ -136,16 +137,18 @@
 
 ### 2-4. 미확인 — 실배포에서만 확인되는 것
 
-로컬 docker 로 "한글 폴더명 `COPY`" · "실제 docker build" · "기동 시간(로컬 제한 사양)"은 확인됐어요(백엔드 보고). 남은 미확인:
+**2026-11-14 첫 docker 배포로 처음 4건이 모두 확인됐어요.** 남은 미확인은 2건이에요.
 
-| # | 미확인 | 왜 문제가 될 수 있나 | 확인되는 곳 |
+| # | 항목 | 상태 | 근거 |
 |---|---|---|---|
-| 1 | **axhub 빌더에서의 실제 빌드 (amd64)** | 로컬 빌드 환경과 CPU 구조 · 파일 시스템(한글 경로 정규화)이 다를 수 있다 | 배포 빌드 로그 |
-| 2 | **실제 트랜잭션 풀러(`DATABASE_URL`) 위 저장소 동작** | 풀러는 세션 기능에 제약이 있다. 낙관적 잠금(`sim_state.version`) · 프리셋 재생 · 쓰기가 풀러 위에서 도는지. 로컬 확인은 풀러 없는 Postgres 였다 | 배포 뒤 4절 9번 |
-| 3 | **실환경 기동 시간** | 시작 단계 + Next 기동이 `start_period` 90초 안에 끝나는지 | 배포 로그 · `axhub deploy verify` |
-| 4 | **`axhub deploy check`** | 아직 돌리지 않았다 | 4절 3번 |
+| 1 | axhub 빌더에서의 실제 빌드 (amd64 · 한글 경로) | **확인됨** | 배포 `a35dc1b2…` `status: succeeded`(시작 → 종료 약 4분 25초 — 빌드 · 기동 · 교체를 합친 시간이고 단계별 시간은 나눠 보지 않았어요) |
+| 2 | 실제 트랜잭션 풀러(`DATABASE_URL`) 위 저장소 동작 | **확인됨** | `meta` `persistence: POSTGRES`, `S1_7` 리셋 → 점검 7/7, 배포 주소 시연 ①~④ 전 구간에서 5xx 0건 · 409 0건 · DB 오류 0건, 쓰기 응답 0.2 ~ 0.3초(프론트엔드 보고). 기획 확인 시점 `stateVersion` 62 |
+| 3 | 실환경 기동 (`start_period` 90초 안) | **확인됨** | `production_live: true`, `healthz` 200. 기동에 걸린 초 단위 시간은 재지 않았어요 |
+| 4 | `axhub deploy check` | **확인됨**(인용) | devlog LOG-039 · 040 — 기획은 다시 돌리지 않았어요 |
+| 5 | **재배포 시 axhub DB 내용(운영 상태) 유지** | **미확인** | 시작 단계는 "운영 상태가 있으면 그대로 둔다"로 짜여 있고 로컬 docker **재시작**에서는 유지됐어요(백엔드 보고). 하지만 axhub 가 **재배포** 때 앱 DB 를 그대로 두는지, 마이그레이션이 추가됐을 때 상태가 남는지는 한 번도 해 보지 않았어요. 첫 재배포에서 확인돼요(4절 12번) |
+| 6 | **장시간 동작** | **미확인** | 배포 뒤 약 4시간 반 시점(22:18)에 `healthz` 200 · `meta` 정상까지만 봤어요. 며칠 단위의 동작 · 유휴 뒤 첫 응답 지연 · 풀러 연결 끊김 뒤 복구는 본 적이 없어요. 심사 전 접속해 `healthz` · `meta` 를 다시 봐요 |
 
-1 · 3 이 실패하면 새 서비스가 뜨지 않고 이전 서비스가 남아요. 2 가 실패하면 서비스는 뜨지만 쓰기가 실패해요 — 그때는 4절 "실패하면"으로 가요.
+5 가 "유지 안 됨"으로 나와도 서비스는 떠요 — 시드 상태(7/1 09:00)로 돌아갈 뿐이라, 4절 12번대로 시연 상태를 다시 남기면 돼요.
 
 ## 3. git 원격 저장소
 
@@ -160,13 +163,13 @@
 ## 4. 배포 절차
 
 모든 명령은 프로젝트 루트에서 실행하고, `export PATH="$HOME/.axhub/bin:$PATH"` 를 먼저 해요.
-**사용자가 "배포"라고 했을 때만** 시작해요. 0번은 첫 docker 배포 전에 한 번 끝내 둬요.
+**사용자가 "배포"라고 했을 때만** 시작해요. 0번은 첫 docker 배포 전 준비였고 **2026-11-14 에 끝났어요**(기록으로 남겨요). 재배포는 1번부터 하고, **12번 재배포 주의**를 먼저 읽어요. 각 단계의 「2026-11-14 실제」는 첫 docker 배포에서 실제로 쓴 명령 · 결과예요.
 
-0. **첫 docker 배포 전 준비** (한 번)
+0. **첫 docker 배포 전 준비** (한 번 — **2026-11-14 완료**)
    - `app/` 에서 `npm run check` 통과.
    - 로컬 docker 확인(2-3 표)이 최신 작업본 기준인지 — Dockerfile · 시작 스크립트를 고쳤다면 다시 확인.
-   - **기록 재생 `basisCheck` 결함(BE-25)이 고쳐졌는지** — 번들을 거친 서버(`next build` 사본 또는 docker 이미지)에서 `basisCheck.ok = true`. 고쳐지기 전에 배포하면 AI 증거 화면에 빨간 "불일치" 경고가 뜬 채로 올라가요. **2026-11-14 현재 수정 중**이에요.
-   - **`AOURA_AI_MODE=mock` 을 runtime 으로 등록**(5절). 없으면 `prepare.required_env_missing` 으로 멈춰요.
+   - 기록 재생 `basisCheck` 결함(BE-25) — **고쳐졌어요**(devlog LOG-036: 기록 원문을 문자열로 읽음, `npm run check` 301 통과 · 4 건너뜀). 배포 주소에서 `basisCheck.ok = true` · 화면 「현재 규칙 계산과 일치」 확인.
+   - `AOURA_AI_MODE=mock` 을 runtime 으로 등록 — **등록됨**(5절). 2026-11-14 실제: `axhub env set AOURA_AI_MODE mock --app aoura-os --tenant lounge --stage runtime --plain`.
 1. **변경 확인** — `git status --short`
 2. **기록 키 보호 확인 (커밋 전 필수)**
    ```bash
@@ -178,42 +181,50 @@
 4. **커밋** — 앱 변경만 스테이징해요(`git add app/ axhub.yaml Dockerfile .dockerignore docs/ …`). 원본 폴더(`01_참가자_배포용/`)는 이미 저장소에 있어야 해요 — 빌드가 저장소에서 CSV 를 꺼내요. `.claude/` `.codex/` `.agents/` `.axhub/` `.env*` 는 절대 커밋하지 않아요. `.gitignore` 는 고치지 않아요.
 5. **push = 배포**
    ```bash
-   git -c credential.interactive=false push origin HEAD:main
+   git push origin HEAD:main          # 2026-11-14 실제로 쓴 명령 (커밋 4dd0161)
    SHA=$(git rev-parse HEAD)
    ```
+   자격 증명 입력 창이 뜨면 안 되는 자동 실행에서는 `git -c credential.interactive=false push origin HEAD:main` 을 써요(같은 동작).
 6. **배포 ID 찾기** — `axhub deploy list --app aoura-os --tenant lounge --all --json` 의 `items` 에서 `commit_sha == $SHA` 인 항목의 `id` (push 직후엔 없을 수 있어 10초 간격으로 몇 번 재조회).
 7. **결과 확인**
    ```bash
    axhub deploy verify <deployment_id> --app aoura-os --tenant lounge --wait --wait-timeout 9m --json
    ```
-   `status: succeeded`, `production_live: true` 면 성공.
+   `status: succeeded`, `production_live: true` 면 성공. 2026-11-14 실제: 두 값 모두 확인(시작 17:47:50 → 종료 17:52:15 KST, 약 4분 25초). `axhub deploy list` 의 해당 항목 `status` 로도 확인돼요.
 8. **상태 확인**
    ```bash
-   curl -s -o /dev/null -w "%{http_code}\n" https://aoura-os-oiw3.axhub.page/api/healthz   # 200
-   curl -s https://aoura-os-oiw3.axhub.page/api/meta                                       # aiMode MOCK · persistence POSTGRES · rawSource FILES
+   curl -s -o /dev/null -w "%{http_code}\n" https://aoura-os-oiw3.axhub.app/api/healthz   # 200
+   curl -s https://aoura-os-oiw3.axhub.app/api/meta    # aiMode MOCK · persistence POSTGRES · rawSource FILES
    ```
-9. **배포 후 점검 (첫 docker 배포 뒤 필수)** — 미확인 2 · 3 의 답이 여기서 나와요.
+   주소는 `.app` 을 써요. `.page` 로 부르면 307 이 나와요(`curl -L` 을 붙여야 따라가요).
+9. **배포 후 점검 (배포 · 재배포 뒤 매번)** — 2026-11-14 첫 docker 배포에서 **5항목 모두 통과**했어요(메인 세션 확인. 기획은 1 · 2 를 22:18 에 다시 확인).
 
-   | # | 점검 | 기대 |
-   |---|---|---|
-   | 1 | `GET /api/healthz` | 200 `{status: "ok"}` |
-   | 2 | `GET /api/meta` | `aiMode: MOCK` · `persistence: POSTGRES` · `rawSource: FILES` |
-   | 3 | `POST /api/scenarios/S1_7/reset` → `GET /api/scenarios/S1_7/check` | **7/7** (쓰기 · 프리셋 재생이 풀러 위에서 되는지) |
-   | 4 | `GET /api/assessments/recorded` | 200, 기록 1건 · **`basisCheck.ok = true`**(이미지 안 원본으로 대조). 확인 도구: `node app/scripts/check-recorded-bundle.mjs <주소>`(읽기 전용 GET 한 번) |
-   | 5 | `GET /data/raw/…csv` (원본 CSV 경로) | 404 — 원본이 주소로 내려받아지지 않는다 |
+   | # | 점검 | 기대 | 2026-11-14 결과 |
+   |---|---|---|---|
+   | 1 | `GET /api/healthz` | 200 `{status: "ok"}` | 통과 (200) |
+   | 2 | `GET /api/meta` | `aiMode: MOCK` · `persistence: POSTGRES` · `rawSource: FILES` | 통과 (세 값 그대로) |
+   | 3 | `POST /api/scenarios/S1_7/reset` → `GET /api/scenarios/S1_7/check` | **7/7** (쓰기 · 프리셋 재생이 풀러 위에서 되는지) | 통과 (7/7) |
+   | 4 | `GET /api/assessments/recorded` | 200, 기록 1건 · **`basisCheck.ok = true`**(이미지 안 원본으로 대조). 확인 도구: `node app/scripts/check-recorded-bundle.mjs <주소>`(읽기 전용 GET 한 번) | 통과 (`check-recorded-bundle` 통과, `basisCheck.ok = true`) |
+   | 5 | `GET /data/raw/…csv` (원본 CSV 경로) | 404 — 원본이 주소로 내려받아지지 않는다 | 통과 (404). 주요 화면 6개는 200 |
 
-   그다음 [DEMO 0-6 시연 진행표](DEMO_SCENARIOS.md#0-6-시연-진행표-한-장-2026-11-14)대로 ①~④ + 기록 재생 화면을 한 번 돌리고, 완료 조건을 「충족」으로 다시 판정해요(DEMO 0-2). 3번 점검은 운영 상태를 프리셋으로 바꾸므로 시연 전에 [전체 초기화]를 해요.
+   그다음 [DEMO 0-6 시연 진행표](DEMO_SCENARIOS.md#0-6-시연-진행표-한-장-2026-11-14)대로 ①~④ + 기록 재생 화면을 한 번 돌려요. 2026-11-14 에 프론트엔드가 배포 주소에서 돌렸고(Playwright, 캡처 85장) 완료 조건 5개를 「충족」으로 판정했어요(DEMO 0-2). **3번 점검은 운영 상태를 프리셋 `S1_7` 로 바꿔요** — 남겨 둔 시연 상태가 있으면 덮어써요(12번).
 10. (선택) GitHub 백업 — `git push github main`
 11. 7절 이력 표에 결과를 적어요(실패도 적어요).
+12. **재배포 주의 (2026-11-14 추가)** — 재배포 뒤 운영 상태가 남는지 **미확인**이에요(2-4 의 5번).
+    - **재배포 전**: `GET /api/meta` 의 `simNow` · `stateVersion` · `preset` 을 적어 둬요(읽기 전용). 지금 값: `simNow` 2026-07-18 00:00 · `stateVersion` 62 · `preset.id` `SEED`(직접 조작한 ① 완료 상태 — 2026-11-14 22:18 기획 확인).
+    - **재배포 직후**: 9번 점검의 1 · 2 를 먼저 하고 `meta` 를 적어 둔 값과 비교해요. 같으면 "재배포 시 DB 유지 — 확인됨", `simNow` 가 7/1 09:00 · 시드로 돌아가 있으면 "유지 안 됨"으로 2-4 를 고쳐요. **이 비교를 하기 전에 9번의 3번(`S1_7` 리셋)을 돌리지 않아요** — 돌리면 유지 여부를 알 수 없게 돼요.
+    - **그다음** 9번 3 ~ 5 를 돌리고, **최종 시연 상태를 다시 남겨요**. 9번 3번이 상태를 프리셋 `S1_7` 로 바꾸므로, 유지 여부와 상관없이 재배포 뒤에는 최종 상태를 다시 정해야 해요. 어떤 상태로 남길지는 [DEMO 0-4 심사자 첫 화면](DEMO_SCENARIOS.md#0-4-시연-운영-주의-2026-11-14)(권고: 프리셋 `S1_7`).
+    - 재배포는 **수정이 화면에 반영됐는지**도 봐요: 타임라인 covenant 막대 라벨 · S-03 수령확인 결과 패널(ONTOLOGY 11-7 FE-21 ~ 23).
+    - 배포판 번호가 바뀌므로 「충족」 판정의 근거 배포(DEMO 0-2)를 새 배포 ID 로 적고, 최소한 9번 5항목 + 고친 화면을 다시 확인해요.
 
-**실패하면**: `axhub deploy logs <deployment_id> --app aoura-os --tenant lounge`, `axhub deploy diagnose --app aoura-os --tenant lounge` 로 원인을 보고, 원인을 사용자에게 그대로 전해요. 준비 · 빌드 단계에서 실패하면 이전 서비스(지금은 옛 정적 페이지)가 그대로 남아요. `axhub up` 으로 우회하지 않아요.
+**실패하면**: `axhub deploy logs <deployment_id> --app aoura-os --tenant lounge`, `axhub deploy diagnose --app aoura-os --tenant lounge` 로 원인을 보고, 원인을 사용자에게 그대로 전해요. 준비 · 빌드 단계에서 실패하면 이전 서비스(지금은 2026-11-14 배포분, 커밋 `4dd0161`)가 그대로 남아요. `axhub up` 으로 우회하지 않아요.
 
 ## 5. 환경변수 · 하지 않는 것
 
 | 이름 | 종류 · 단계 | 상태 | 값 |
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | secret · runtime | **등록됨** (2026-11-12) | 비밀값 — 문서 · 채팅 · 커밋에 쓰지 않아요. mock 모드에서는 쓰이지 않아요 |
-| `AOURA_AI_MODE` | 일반(plain) · **runtime** | **미등록 — 배포 전에 등록 필수**(`axhub.yaml` `env.required`) | `mock` (비밀값 아님) |
+| `AOURA_AI_MODE` | 일반(plain) · **runtime** | **등록됨** (2026-11-14 — `env list`: `AOURA_AI_MODE runtime plain mock`). `axhub.yaml` `env.required` 라 지우면 배포가 멈춰요 | `mock` (비밀값 아님) |
 | `DATABASE_URL` | axhub 가 런타임에 주입 | **등록하지 않아요** | 트랜잭션 풀러 주소 — 앱의 조회 · 쓰기 |
 | `DIRECT_DATABASE_URL` | axhub 가 런타임에 주입 | **등록하지 않아요** | 세션 단위 주소 — 시작 단계(마이그레이션 · 잠금 · 시드) 전용 |
 | `PORT` | axhub 가 주입(`runtime.port`) | **등록하지 않아요** | 3000 |
@@ -221,10 +232,10 @@
 | `MIGRATIONS_DIR` | 선택 | 등록하지 않아요 | 기본값 = 실행 위치의 `drizzle/migrations`(이미지에 들어 있음) |
 
 - 앱 스크립트: `npm run build:deploy` — 시작 단계(`scripts/deploy/bootstrap.ts`)를 `build/deploy/bootstrap.cjs` 로 묶어요(Dockerfile 이 부름).
-- **`AOURA_AI_MODE` 등록** — axhub 상태를 바꾸는 일이라 **사용자의 "배포" 지시 뒤**에 해요. **아래 `--from-dotenv` 방식을 쓰지 않아요**(그 방식은 stage 가 build 로 잡혀요). `axhub env set --help` 로 확인한 옵션: 위치 인자 `[KEY] [VALUE]` · `--stage <build|runtime|both>` · `--plain`(`--secret` 과 배타). 그에 따른 명령은 아래와 같아요 — **아직 실행해 본 적이 없어요(문법은 도움말 기준, 미검증)**. 실행 뒤 `env list` 로 이름 · 단계(runtime)를 반드시 확인해요.
+- **`AOURA_AI_MODE` 등록 (2026-11-14 완료)** — axhub 상태를 바꾸는 일이라 **사용자의 "배포" 지시 뒤**에 해요. **아래 `--from-dotenv` 방식을 쓰지 않아요**(그 방식은 stage 가 build 로 잡혀요). `axhub env set --help` 로 확인한 옵션: 위치 인자 `[KEY] [VALUE]` · `--stage <build|runtime|both>` · `--plain`(`--secret` 과 배타). 그에 따른 명령은 아래와 같아요 — **검증됨**: 2026-11-14 에 이 명령 그대로 실행해 성공했고 `env list` 에 `AOURA_AI_MODE runtime plain mock` 으로 보여요(이전 판의 "미검증" 표시는 이것으로 해소). 값을 바꿀 때도 실행 뒤 `env list` 로 이름 · 단계(runtime)를 확인해요.
   ```bash
   axhub env set AOURA_AI_MODE mock --app aoura-os --tenant lounge --stage runtime --plain
-  axhub env list --app aoura-os --tenant lounge   # AOURA_AI_MODE 가 runtime 으로 보이는지
+  axhub env list --app aoura-os --tenant lounge   # AOURA_AI_MODE  runtime  plain  mock
   ```
 - 비밀값은 채팅으로 받지 않아요. 비밀값인 환경변수는 `app/.env.local` 에 넣고(git 제외됨) 아래처럼 등록해요. 값은 화면에 출력하지 않아요.
   ```bash
@@ -251,6 +262,7 @@
 | `axhub: command not found` | PATH 미반영 | `export PATH="$HOME/.axhub/bin:$PATH"` |
 | 로그인 만료 | 토큰 만료(약 24시간) | `axhub auth login --tenant lounge --json` → 브라우저 승인 → `axhub auth login --tenant lounge --resume-last --wait-approval 90s` |
 | 배포가 시작 전에 멈춤 `prepare.required_env_missing` | `axhub.yaml` `env.required` 의 `AOURA_AI_MODE` 가 등록돼 있지 않음 | 5절대로 runtime 으로 등록 뒤 다시 배포 |
+| `https://aoura-os-oiw3.axhub.page/…` 를 `curl` 로 부르면 200 이 아니라 307 이 나옴 | `.page` 주소는 실제 서비스 주소 `https://aoura-os-oiw3.axhub.app` 로 넘기는 리다이렉트 | 문서 · 점검 명령 · 제출에는 `.app` 주소를 써요. 브라우저는 자동으로 따라가요 |
 | 배포 실패 | — | `axhub deploy logs <deployment_id> --app aoura-os --tenant lounge`, `axhub deploy diagnose --app aoura-os --tenant lounge` |
 
 ## 7. 배포 이력
@@ -258,7 +270,10 @@
 | 날짜 | 커밋 | 배포 ID | 결과 | 내용 |
 |---|---|---|---|---|
 | 2026-11-10 | `ec120e3` | `508cb106-1876-4fb6-bce5-7e6540d7c382` | 성공 | 첫 배포 (import, static) |
-| 2026-11-10 | `a03d947` | `b5b8bfbf-c856-4406-bf7a-fd39376d8301` | 성공 | `.gitignore` 원복 후 재배포 (static) — **지금 떠 있는 옛 정적 페이지** |
+| 2026-11-10 | `a03d947` | `b5b8bfbf-c856-4406-bf7a-fd39376d8301` | 성공 | `.gitignore` 원복 후 재배포 (static) — 옛 정적 페이지(2026-11-14 17:52 까지 떠 있었음) |
 | 2026-11-13 05:12 KST (UTC 2026-11-12 20:12 — `axhub deploy list` 의 `started_at`) | `602a5c2` | `64f40f5e-33db-4c53-960a-f0282477419a` | **실패** | 준비 단계 `resolve.spec_invalid` — "deploy method mismatch: app=docker manifest=static". 문서 커밋(온톨로지 · 시연 · 화면 명세)이 `origin` 에 push 된 것. 누가 push 했는지는 **미확인**(devlog LOG-030 은 사용자 직접 push 로 추정). 서비스 영향 없음 — 옛 정적 페이지 유지. 2026-11-14 `axhub deploy list` 로 확인 |
 
-- 운영 시스템(docker)의 배포는 **아직 없어요.** 첫 docker 배포 결과를 이 표에 이어 적어요.
+| 2026-11-14 17:47:50 ~ 17:52:15 KST (UTC 08:47:50 ~ 08:52:15 — `started_at` · `completed_at`, 약 4분 25초) | `4dd0161` | `a35dc1b2-be52-4c8f-b2bb-03df6b0f935c` | **성공** | **첫 docker 배포** — 운영 시스템(4단계까지). `status: succeeded` · `production_live: true`. 사전: `AOURA_AI_MODE=mock` runtime 등록. `git push origin HEAD:main`. 배포 후 점검 5항목 통과(4절 9번), 주요 화면 6개 200, 배포 주소 시연 ①~④ · 기록 화면 · S-11 · S-12 통과(프론트엔드, 캡처 85장 — DEMO 0-2 · 0-3). 주소 https://aoura-os-oiw3.axhub.app (`.page` 는 307). 알려진 문제 3건은 DEMO 0-4 |
+
+- **지금 떠 있는 것**: 위 마지막 행(커밋 `4dd0161`). 운영 상태는 ① 을 직접 조작해 끝낸 상태(7/18 00:00, 계약 `NEGOTIATING`, PLAN-004 `CONFIRMED`, 작업 4건 `DONE`, `OVERDUE` 0)로 남겨 뒀어요.
+- 로컬에 미커밋 수정이 있어 **재배포가 한 번 더 필요해요**(사용자의 "배포" 지시 뒤, 4절 12번). 결과를 이 표에 이어 적어요.

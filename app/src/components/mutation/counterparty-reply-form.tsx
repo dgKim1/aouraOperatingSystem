@@ -36,7 +36,7 @@ export function CounterpartyReplyForm({
   defaultNote?: string;
   submitLabel?: string;
   compact?: boolean;
-  /** 행동한 행이 재조회 뒤 사라질 수 있는 곳(작업 표)이면 결과를 결과 보관함에 남긴다 */
+  /** 회신 뒤 재조회로 이 폼(또는 폼이 놓인 행)이 사라지는 곳 — 작업 표 · S-03 통보 탭 · S-09 보충 검토 — 이면 결과를 결과 보관함에 남긴다 */
   dock?: boolean;
 }) {
   const uid = useId();

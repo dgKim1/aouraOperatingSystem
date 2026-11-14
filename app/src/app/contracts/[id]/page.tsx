@@ -340,7 +340,7 @@ export default async function ContractPage({ params, searchParams }: { params: P
             ) : role.actorRole === 'AGENCY' ? (
               <div>
                 <h4 className="mb-1 text-sm font-semibold">에이전시 회신 (모의)</h4>
-                <CounterpartyReplyForm fixedFrom="AGENCY" defaultOutcome="RECEIPT_CONFIRMED" submitLabel="에이전시 회신 기록 (모의)" />
+                <CounterpartyReplyForm fixedFrom="AGENCY" defaultOutcome="RECEIPT_CONFIRMED" submitLabel="에이전시 회신 기록 (모의)" dock />
               </div>
             ) : (
               <p className="text-xs text-zinc-700">[수령확인 회신]은 상단 「현재 역할」을 에이전시(모의)로 바꾸면 여기서 넣을 수 있습니다 (또는 사건 입력의 외부 회신).</p>

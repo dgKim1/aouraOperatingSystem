@@ -11,6 +11,7 @@ import type { ActorRole, SubjectType } from '@/domain/types';
 import { ROLE_KO } from '@/domain/types';
 import { Button } from '@/components/ui/button';
 import { useApiAction } from './api-client';
+import { publishResult } from './result-dock';
 import { ApiErrorBox, ResultPanel } from './result-panel';
 
 export function MockBadge() {
@@ -84,19 +85,32 @@ export function AssessButton({
   );
 }
 
-export function RequestApprovalButton({ assessmentId, disabledReason, label = '승인 요청 만들기', actorRole }: { assessmentId: string; disabledReason?: string | null; label?: string; actorRole?: ActorRole }) {
+export function RequestApprovalButton({
+  assessmentId,
+  disabledReason,
+  label = '승인 요청 만들기',
+  actorRole,
+  dock = false,
+}: {
+  assessmentId: string;
+  disabledReason?: string | null;
+  label?: string;
+  actorRole?: ActorRole;
+  /** 상신 뒤 재조회로 이 버튼이 사라지는 곳(S-05 — 버튼 자리가 승인요청 링크로 바뀜)이면 결과를 결과 보관함에 남긴다 */
+  dock?: boolean;
+}) {
   const r = useApiAction<ApprovalCreateResponse>();
   if (actorRole === 'AGENCY') return <AgencyNote what="상신" />;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={r.pending || !!disabledReason || !!r.result} onClick={() => r.run('/api/approval-requests', 'POST', { assessmentId })} title={disabledReason ?? undefined}>
+        <Button size="sm" disabled={r.pending || !!disabledReason || !!r.result} onClick={() => r.run('/api/approval-requests', 'POST', { assessmentId }, (d) => { if (dock) publishResult('승인요청 생성 결과', d); })} title={disabledReason ?? undefined}>
           <Send className="size-3.5" aria-hidden /> {r.pending ? '상신 중…' : r.result ? '상신 완료' : label}
         </Button>
         <span className="text-xs text-zinc-600">판단안 {assessmentId} 근거 · 권한자별 묶음은 서버가 정함 (A-11){disabledReason ? ` — ${disabledReason}` : ''}</span>
       </div>
       {r.error && <ApiErrorBox error={r.error} />}
-      {r.result && (
+      {r.result && !dock && (
         <ResultPanel
           title="승인요청 생성 결과"
           result={r.result}

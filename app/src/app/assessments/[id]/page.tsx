@@ -162,7 +162,7 @@ export default async function AssessmentPage({ params }: { params: Promise<{ id:
               ))}
             </p>
           ) : (
-            <RequestApprovalButton assessmentId={a.id} actorRole={role.actorRole} />
+            <RequestApprovalButton assessmentId={a.id} actorRole={role.actorRole} dock />
           )}
           <AssessButton subjectType={a.subjectType} subjectIds={a.subjectIds} label="다시 판단" aiMode={meta.aiMode} variant="outline" showRequestNext={false} actorRole={role.actorRole} />
           <Link href="/approvals" className="inline-flex items-center text-sm underline">

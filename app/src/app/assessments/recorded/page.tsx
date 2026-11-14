@@ -1,5 +1,5 @@
 /**
- * 실제 Claude 실행 기록 · 재생 (S-05 판단안 영역) — GET /api/assessments/recorded 와 같은 서비스 응답(RecordedRunsResponse)을 그대로 보인다.
+ * 실제 Claude 실행 기록 · 재생 (S-05R) — GET /api/assessments/recorded 와 같은 서비스 응답(RecordedRunsResponse)을 그대로 보인다.
  *
  * 실제 AI 로 판단안을 한 번 만든 기록을 다시 보여줄 뿐, 이 화면은 AI 를 호출하지 않고 운영 상태도 읽거나 바꾸지 않는다.
  * 흐름 순서로 배치한다: ① AI 가 받은 것 → ② AI 가 낸 것 → ③ 검증 → ④ 승인요청 → ⑤ 사람 회신 대기.
@@ -37,7 +37,7 @@ export default async function RecordedRunsPage({ searchParams }: { searchParams:
   return (
     <div className="space-y-4">
       <PageHeader
-        id="S-05"
+        id="S-05R"
         title="실제 Claude 실행 기록"
         decision="AI 가 실제로 무엇을 받아 무엇을 냈고, 그 결과가 어떻게 사람(권한자)의 승인 요청으로 이어졌는지 확인합니다. 이 화면은 보기 전용이라 아무것도 바뀌지 않습니다."
       >

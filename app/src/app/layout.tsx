@@ -33,7 +33,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <SideNav badges={{ '/approvals': myPending, '/tasks': overdue }} />
             </aside>
             <main id="main" className="min-w-0 flex-1 p-4 pb-16 md:p-6">
-              <ResultDock />
+              <ResultDock stateVersion={meta.stateVersion} />
               {children}
             </main>
           </div>

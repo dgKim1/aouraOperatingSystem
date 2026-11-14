@@ -105,21 +105,21 @@ export function DeadlineTimeline({ items, windows, simNow }: { items: TimelineIt
         {prior.map((w) => (
           <div
             key={`p-${w.forecastId}-${w.start}`}
-            className="absolute top-1 h-4 border border-dashed border-red-400 bg-red-50"
+            className="absolute top-1 flex h-4 items-center justify-center overflow-hidden border border-dashed border-red-400 bg-red-50"
             style={{ left: `${pos(w.start)}%`, width: `${pos(w.end) - pos(w.start)}%` }}
             title={`${w.forecastId}: ${w.start} ~ ${w.end}`}
           >
-            <span className="pl-4 pr-1 text-[10px] whitespace-nowrap text-red-800">{w.forecastId} ~{w.end.slice(5).replace('-', '/')}</span>
+            <span className="px-1 text-[10px] leading-none whitespace-nowrap text-red-800">{w.forecastId} ~{w.end.slice(5).replace('-', '/')}</span>
           </div>
         ))}
         {current.map((w) => (
           <div
             key={`c-${w.forecastId}-${w.start}`}
-            className={cn('absolute h-4 bg-red-600/80', prior.length ? 'bottom-1' : 'top-1/2 -translate-y-1/2')}
+            className={cn('absolute flex h-4 items-center justify-center overflow-hidden bg-red-600/80', prior.length ? 'bottom-1' : 'top-1/2 -translate-y-1/2')}
             style={{ left: `${pos(w.start)}%`, width: `${pos(w.end) - pos(w.start)}%` }}
             title={`${w.forecastId}: ${w.start} ~ ${w.end}`}
           >
-            <span className="pl-4 pr-1 text-[10px] font-semibold whitespace-nowrap text-white">
+            <span className="px-1 text-[10px] leading-none font-semibold whitespace-nowrap text-white">
               {w.forecastId} {w.start.slice(5).replace('-', '/')}~{w.end.slice(5).replace('-', '/')}
             </span>
           </div>

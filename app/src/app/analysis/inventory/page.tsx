@@ -127,7 +127,7 @@ export default async function InventoryPage() {
           (role.actorRole === 'SCM' ? (
             <div className="mt-3">
               <h4 className="mb-1 text-sm font-semibold">보충 검토 회신 (SCM · 승인 아님)</h4>
-              <CounterpartyReplyForm fixedFrom="SCM" outcomes={['INFO_PROVIDED', 'INSUFFICIENT', 'REJECTED']} submitLabel="보충 검토 회신 (모의)" />
+              <CounterpartyReplyForm fixedFrom="SCM" outcomes={['INFO_PROVIDED', 'INSUFFICIENT', 'REJECTED']} submitLabel="보충 검토 회신 (모의)" dock />
             </div>
           ) : (
             <p className="mt-2 text-xs text-zinc-700">초안(DRAFT) 보충요청은 SCM 검토를 기다립니다 — 상단 「현재 역할」을 SCM 으로 바꾸면 [보충 검토 회신]을 넣을 수 있습니다.</p>
