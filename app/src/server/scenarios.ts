@@ -13,11 +13,11 @@ import { mockDraft } from './ai/assessor';
 
 export const PRESETS: PresetInfo[] = [
   { id: 'SEED', scenario: '-', title: '초기 상태 (7/1 09:00)', description: '통보 · 기안 미접수', next: '사건 입력에서 갱신 통보 · 확대 기안 접수' },
-  { id: 'S1_RECEIVED', scenario: '①', title: '① 접수 · 확인 (S1-1~2)', description: '계약 UNDER_REVIEW · 25건 VALIDATED', next: '판단안 만들기 → 승인 요청 만들기' },
-  { id: 'S1_4', scenario: '①', title: '① 승인 요청 3건 (S1-4)', description: '판단안 2건 · 승인요청 3건 대기, 7/1 09:00', next: '승인함에서 그룹 CEO/이사회 역할로 계약 · PLAN-001~003 요청 회신, Masil 대표로 PLAN-004 · 005 요청 회신' },
-  { id: 'S1_5', scenario: '①', title: '① 모의 회신 후 (S1-5, 7/10 14:00)', description: '계약 NOTICE_PENDING · PLAN-004 승인 · 4건 부결', next: '작업에서 통보 발송(SEND_NOTICE) 완료' },
-  { id: 'S1_6', scenario: '①', title: '① 통보 · 수령확인 (S1-6, 7/14 11:00)', description: '계약 NEGOTIATING (수령확인 7/14)', next: '시점 7/18 00:00 으로 이동' },
-  { id: 'S1_7', scenario: '①', title: '① 기한 도래 후 (S1-7, 7/18 00:00)', description: 'PLAN-004 CONFIRMED · 4건 CANCELLED · 자동 갱신 없음', next: '인플루언서 성과에서 남은 기안 배분 비중 확인' },
+  { id: 'S1_RECEIVED', scenario: '①', title: '①-2 접수 · 확인 (S1-1~2)', description: '계약 UNDER_REVIEW · 25건 VALIDATED', next: '판단안 만들기 → 승인 요청 만들기' },
+  { id: 'S1_4', scenario: '①', title: '①-3 승인 요청 3건 (S1-4)', description: '판단안 2건 · 승인요청 3건 대기, 7/1 09:00', next: '승인함에서 그룹 CEO/이사회 역할로 계약 · PLAN-001~003 요청 회신, Masil 대표로 PLAN-004 · 005 요청 회신' },
+  { id: 'S1_5', scenario: '①', title: '①-4 모의 회신 후 (S1-5, 7/10 14:00)', description: '계약 NOTICE_PENDING · PLAN-004 승인 · 4건 부결', next: '작업에서 통보 발송(SEND_NOTICE) 완료' },
+  { id: 'S1_6', scenario: '①', title: '①-5 통보 · 수령확인 (S1-6, 7/14 11:00)', description: '계약 NEGOTIATING (수령확인 7/14)', next: '시점 7/18 00:00 으로 이동' },
+  { id: 'S1_7', scenario: '①', title: '①-6 기한 도래 후 (S1-7, 7/18 00:00)', description: 'PLAN-004 CONFIRMED · 4건 CANCELLED · 자동 갱신 없음', next: '인플루언서 성과에서 남은 기안 배분 비중 확인' },
   { id: 'S2', scenario: '②', title: '② 회수 지연 → 재전망 (7/14 10:00)', description: '하회 구간 7/21~8/28, PLAN-004 재승인 요청 대기', next: '승인함에서 그룹 CEO/이사회 역할로 PLAN-004 새 요청에 조건부 승인' },
   { id: 'S3_1', scenario: '③', title: '③ 계약 반려 (7/10 14:00)', description: '계약 REVIEW_BEFORE_DEADLINE · 정보 요청 작업', next: '사건 입력에서 에이전시 정보 부족 회신' },
   { id: 'S3_B', scenario: '③', title: '③-B 미결로 기한 경과 (7/18 00:00)', description: '계약 AUTO_RENEWED (권한 미경유 체결)', next: '전속계약 상세에서 위약금 확인' },

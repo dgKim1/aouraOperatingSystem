@@ -74,13 +74,18 @@ export default async function ScenariosPage() {
         {GROUPS.map((g) => (
           <Section key={g.s} title={g.title} id={`sc-${g.s}`}>
             <p className="mb-2 text-sm text-zinc-700">{g.goal}</p>
+            {g.s === '①' && (
+              <p className="mb-2 text-xs text-zinc-600">
+                ①-1 ~ ①-6 은 하나의 시연을 시간순으로 나눈 중간 지점입니다(위 → 아래). 처음부터 직접 조작하려면 ①-1 에서 시작하고, 버튼은 그 지점까지 건너뜁니다.
+              </p>
+            )}
             <ul className="space-y-2">
               {presets
                 .filter((p) => p.scenario === g.s || (g.s === '①' && p.scenario === '-'))
                 .map((p) => (
                   <li key={p.id} className={p.id === current ? 'rounded border border-blue-600 p-2' : 'rounded border p-2'}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{p.title}</span>
+                      <span className="text-sm font-medium">{p.scenario === '-' ? `①-1 ${p.title}` : p.title}</span>
                       <PresetButton id={p.id} title={p.title} current={p.id === current} />
                     </div>
                     <p className="text-xs text-zinc-600">{p.description}</p>
